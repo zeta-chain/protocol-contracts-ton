@@ -1,9 +1,9 @@
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
-import { beginCell, Cell, Slice, toNano, Transaction } from '@ton/core';
+import { Cell, toNano } from '@ton/core';
 import { Gateway, GatewayConfig } from '../wrappers/Gateway';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
-import { findTransaction, FlatTransactionComparable } from '@ton/test-utils/dist/test/transaction'; // copied from `errors.fc`
+import {evmAddressToSlice, expectTX, logGasUsage} from "./utils";
 
 // copied from `errors.fc`
 const err_no_intent = 101;
@@ -139,43 +139,3 @@ describe('Gateway', () => {
     // todo check that gas costs are always less than 0.01 for long memos
     // todo deposits disabled
 });
-
-function expectTX(transactions: Transaction[], cmp: FlatTransactionComparable): Transaction {
-    expect(transactions).toHaveTransaction(cmp);
-
-    const tx = findTransaction(transactions, cmp);
-    expect(tx).toBeDefined();
-
-    return tx!;
-}
-
-function evmAddressToSlice(address: string): Slice {
-    expect(address.length).toEqual(42);
-
-    // Remove the '0x' prefix
-    const hexString = address.slice(2);
-
-    // Convert to Buffer
-    const buffer = Buffer.from(hexString, 'hex');
-    expect(buffer.length).toEqual(20);
-
-    return beginCell().storeBuffer(buffer).asSlice();
-}
-
-function logGasUsage(tx: Transaction): void {
-    const testName = expect.getState().currentTestName;
-    console.log(`test "${testName}": gas used`, formatCoin(tx.totalFees.coins));
-}
-
-// returns a string with a decimal point
-function formatCoin(coins: bigint): string {
-    const divisor = 1_000_000_000n;
-
-    const tons = coins / divisor;
-    const fractional = coins % divisor;
-
-    // Ensure the fractional part is always 9 digits by padding with leading zeros if necessary
-    const fractionalStr = fractional.toString().padStart(9, '0');
-
-    return `${tons.toString()}.${fractionalStr} TON`;
-}
