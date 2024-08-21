@@ -1,0 +1,21 @@
+;; The internal message is bouncable,
+;; we don't support this at the moment.
+const ERR_BOUNCABLE = 100;
+
+;; No opcode and query_id provided
+const ERR_NO_INTENT = 101;
+
+;; Unknown opcode
+const ERR_UNKNOWN_OP = 102;
+
+;; No memoe provided
+const ERR_MEMO_IS_EMPTY = 103;
+
+;; Memo is too short (less than 20 bytes)
+const ERR_MEMO_IS_TOO_SHORT = 104;
+
+;; We only want to support workchain 0 aka "basechain"
+const ERR_WRONG_WORKCHAIN = 105;
+
+;; The message has insufficient TON value
+const ERR_INSUFFICIENT_VALUE = 106;

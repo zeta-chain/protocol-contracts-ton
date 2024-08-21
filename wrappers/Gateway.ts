@@ -1,13 +1,35 @@
-import { Address, beginCell, Cell, Contract, contractAddress, ContractProvider, Sender, SendMode } from '@ton/core';
+import {
+    Address,
+    beginCell,
+    Cell,
+    Contract,
+    contractAddress,
+    ContractProvider,
+    Sender,
+    SendMode,
+    Slice,
+} from '@ton/core';
 
-export type GatewayConfig = {};
+const opDeposit = 100;
 
+export type GatewayConfig = {
+    depositsEnabled: boolean;
+};
+
+// Initial state of the contract during deployment
 export function gatewayConfigToCell(config: GatewayConfig): Cell {
-    return beginCell().endCell();
+    return beginCell()
+        .storeUint(config.depositsEnabled ? 1 : 0, 1)
+        .storeCoins(0) // valueLocked
+        .storeCoins(0) // fees
+        .endCell();
 }
 
 export class Gateway implements Contract {
-    constructor(readonly address: Address, readonly init?: { code: Cell; data: Cell }) {}
+    constructor(
+        readonly address: Address,
+        readonly init?: { code: Cell; data: Cell },
+    ) {}
 
     static createFromAddress(address: Address) {
         return new Gateway(address);
@@ -25,5 +47,36 @@ export class Gateway implements Contract {
             sendMode: SendMode.PAY_GAS_SEPARATELY,
             body: beginCell().endCell(),
         });
+    }
+
+    async sendDeposit(provider: ContractProvider, via: Sender, value: bigint, memo: Slice | null) {
+        let body = beginCell()
+            .storeUint(opDeposit, 32) // op code
+            .storeUint(0, 64); // query id
+
+        if (memo) {
+            body = body.storeRef(beginCell().storeSlice(memo).endCell());
+        }
+
+        await provider.internal(via, {
+            value,
+            sendMode: SendMode.PAY_GAS_SEPARATELY,
+            body: body.endCell(),
+        });
+    }
+
+    async getBalance(provider: ContractProvider): Promise<bigint> {
+        const state = await provider.getState();
+
+        return state.balance;
+    }
+
+    async getQueryState(provider: ContractProvider): Promise<[boolean, bigint]> {
+        const response = await provider.get('query_state', []);
+
+        const depositsEnabled = response.stack.readBoolean();
+        const valueLocked = response.stack.readBigNumber();
+
+        return [depositsEnabled, valueLocked];
     }
 }

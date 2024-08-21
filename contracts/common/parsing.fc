@@ -1,0 +1,27 @@
+#include "../imports/stdlib.fc";
+
+;; parses full message and returns (int flags, slice sender, slice rest_of_the_message)
+;;
+;; TL-B
+;; int_msg_info$0 ihr_disabled:Bool bounce:Bool bounced:Bool
+;;   src:MsgAddress dest:MsgAddressInt
+;;   value:CurrencyCollection ihr_fee:Grams fwd_fee:Grams
+;;   created_lt:uint64 created_at:uint32 = CommonMsgInfoRelaxed;
+(int, slice, slice) parse_flags_and_sender(cell full_message) inline {
+    slice cs = full_message.begin_parse();
+
+    int flags = cs~load_uint(4);
+    slice sender = cs~load_msg_addr();
+
+    return (flags, sender, cs);
+}
+
+;; parses the query from the message body
+;; https://docs.ton.org/develop/smart-contracts/guidelines/internal-messages#internal-message-body
+(int, int) parse_intent(slice message_body) inline {
+    int op = message_body~load_uint(32);
+    int query_id = message_body~load_uint(64);
+
+    return (op, query_id);
+}
+

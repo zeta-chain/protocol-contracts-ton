@@ -1,0 +1,28 @@
+#include "../imports/stdlib.fc";
+
+;; Boolean flag to enable/disable deposits
+global int state::deposit_enabled;
+
+;; Total locked TON in the gateway
+global int state::total_locked;
+
+;; Total fees collected by the gateway
+global int state::fees;
+
+() load_state() impure inline {
+    var cs = get_data().begin_parse();
+
+    state::deposit_enabled = cs~load_uint(1);
+    state::total_locked = cs~load_coins();
+    state::fees = cs~load_coins();
+}
+
+() mutate_state() impure inline {
+    var store = begin_cell()
+        .store_uint(state::deposit_enabled, 1)
+        .store_coins(state::total_locked)
+        .store_coins(state::fees)
+        .end_cell();
+
+    set_data(store);
+}

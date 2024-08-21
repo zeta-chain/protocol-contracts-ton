@@ -1,5 +1,84 @@
+#pragma version >=0.4.0;
+
 #include "imports/stdlib.fc";
+#include "common/errors.fc";
+#include "common/parsing.fc";
+#include "common/state.fc";
+
+;; OP CODES ========================================
+const op::deposit = 100;
+
+;; GAS FEE =========================================
+;; Let's use const for now and refine this later
+const deposit_gas_fee = 10000000; ;; 0.01 TON
+
+;; deposit TON to the gateway
+() deposit(slice sender, int amount, cell memo_cell) impure inline {
+    ;; Validate amount
+    throw_if(ERR_INSUFFICIENT_VALUE, amount < deposit_gas_fee);
+
+    ;; Validate memo
+    slice memo = memo_cell.begin_parse();
+
+    ;; evm address is 20 bytes, so the memo should be at least 20 bytes long
+    throw_if(ERR_MEMO_IS_TOO_SHORT, memo.slice_bits() < (8 * 20));
+    ;; todo check if memo is too long. We don't want to have DDOS due to long memos (gas > 0.01 TON)
+
+    ;; Update state
+    var deposit_amount = amount - deposit_gas_fee;
+
+    state::total_locked += deposit_amount;
+    state::fees += deposit_gas_fee;
+
+    mutate_state();
+}
 
 () recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
-    ;; todo
+    (int flags, slice sender, _) = in_msg_full.parse_flags_and_sender();
+
+    ;; Check if the message is bouncable and fail
+    ;; todo bouncED or bouncABLE?
+    throw_if(ERR_BOUNCABLE, flags & 1);
+
+    ;; We only want to support the basechain (id=0)
+    (int wc, _) = sender.parse_std_addr();
+    throw_unless(ERR_WRONG_WORKCHAIN, wc == 0);
+
+    ;; Make sure the message contains op_code and query_id
+    ;;
+    ;; We DON't support op==0 aka "simple transfer with comment"
+    ;; to prevent assets loss in case of a mistake tx by the user.
+    throw_if(ERR_NO_INTENT, in_msg_body.slice_bits() < (32 + 64));
+
+    ;; query_id is not used for now.
+    (int op, _) = parse_intent(in_msg_body);
+
+    load_state();
+
+    if (op == op::deposit) {
+        ;; expect a ref with a memo
+        throw_unless(ERR_MEMO_IS_EMPTY, in_msg_body.slice_refs());
+
+        cell memo = in_msg_body~load_ref();
+
+        return deposit(sender, msg_value, memo);
+    }
+
+    ;; todo op donation feature
+
+    throw(ERR_UNKNOWN_OP);
+}
+
+() recv_external(slice in_msg) impure {
+    ;; todo check TSS
+    ;; todo accept message
+    ;; todo invoke admin commands
+    ;; todo who pays for the gas?
+}
+
+;; returns (bool `deposits enabled`, int `total TON locked`)
+(int, int) query_state() method_id {
+    load_state();
+
+    return (state::deposit_enabled, state::total_locked);
 }
