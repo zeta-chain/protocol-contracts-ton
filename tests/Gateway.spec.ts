@@ -1,9 +1,9 @@
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
 import { Cell, toNano } from '@ton/core';
-import { Gateway, GatewayConfig } from '../wrappers/Gateway';
+import { Gateway, GatewayConfig, opDeposit, parseDepositLog } from '../wrappers/Gateway';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
-import {evmAddressToSlice, expectTX, logGasUsage} from "./utils";
+import { evmAddressToSlice, expectTX, loadHexString, logGasUsage } from './utils'; // copied from `errors.fc`
 
 // copied from `errors.fc`
 const err_no_intent = 101;
@@ -128,10 +128,24 @@ describe('Gateway', () => {
 
         expect(valueLocked).toEqual(amount - gas_fee);
 
-        // Check that we have a log with exact amount
-        // todo
+        // Check that we have a log with the exact amount
+        expect(tx.outMessagesCount).toEqual(1);
+
+        // Check for data in the log message
+        const depositLog = parseDepositLog(tx.outMessages.get(0)!.body);
+
+        expect(depositLog.op).toEqual(opDeposit);
+        expect(depositLog.queryId).toEqual(0);
+        expect(depositLog.sender.toRawString()).toEqual(sender.address.toRawString());
+        expect(depositLog.amount).toEqual(amount - gas_fee);
+
+        // Check that memo logged properly
+        const memoAddress = loadHexString(depositLog.memo.asSlice(), 20);
+
+        expect(memoAddress).toEqual(evmAddress);
     });
 
+    // todo donation
     // todo should fail w/o value too small
     // todo should fail w/o memo
     // todo should fail w/ invalid memo (too short)

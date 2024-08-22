@@ -4,9 +4,11 @@
 #include "common/errors.fc";
 #include "common/parsing.fc";
 #include "common/state.fc";
+#include "common/messages.fc";
 
 ;; OP CODES ========================================
 const op::deposit = 100;
+const op::donate = 101;
 
 ;; GAS FEE =========================================
 ;; Let's use const for now and refine this later
@@ -14,13 +16,10 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
 
 ;; deposit TON to the gateway
 () deposit(slice sender, int amount, cell memo_cell) impure inline {
-    ;; Validate amount
-    throw_if(ERR_INSUFFICIENT_VALUE, amount < deposit_gas_fee);
-
     ;; Validate memo
     slice memo = memo_cell.begin_parse();
 
-    ;; evm address is 20 bytes, so the memo should be at least 20 bytes long
+    ;; EVM address is 20 bytes, so the memo should be at least 20 bytes long
     throw_if(ERR_MEMO_IS_TOO_SHORT, memo.slice_bits() < (8 * 20));
     ;; todo check if memo is too long. We don't want to have DDOS due to long memos (gas > 0.01 TON)
 
@@ -30,7 +29,19 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
     state::total_locked += deposit_amount;
     state::fees += deposit_gas_fee;
 
+    ;; Update the state
     mutate_state();
+
+    ;; Logs `$sender deposited $deposit_amount TON with $memo`
+    cell log = begin_cell()
+        .store_uint(op::deposit, op_code_size)
+        .store_uint(0, query_id_size)
+        .store_slice(sender)
+        .store_coins(deposit_amount)
+        .store_ref(memo_cell)
+        .end_cell();
+
+    send_log_message(log);
 }
 
 () recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
@@ -48,14 +59,21 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
     ;;
     ;; We DON't support op==0 aka "simple transfer with comment"
     ;; to prevent assets loss in case of a mistake tx by the user.
-    throw_if(ERR_NO_INTENT, in_msg_body.slice_bits() < (32 + 64));
+    throw_if(ERR_NO_INTENT, in_msg_body.slice_bits() < (op_code_size + query_id_size));
 
     ;; query_id is not used for now.
     (int op, _) = parse_intent(in_msg_body);
 
     load_state();
 
+    ;; Just accept the incoming value
+    if (op == op::donate) {
+        return ();
+    }
+
     if (op == op::deposit) {
+        throw_if(ERR_INSUFFICIENT_VALUE, msg_value < deposit_gas_fee);
+
         ;; expect a ref with a memo
         throw_unless(ERR_MEMO_IS_EMPTY, in_msg_body.slice_refs());
 
@@ -63,8 +81,6 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
 
         return deposit(sender, msg_value, memo);
     }
-
-    ;; todo op donation feature
 
     throw(ERR_UNKNOWN_OP);
 }
@@ -80,5 +96,5 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
 (int, int) query_state() method_id {
     load_state();
 
-    return (state::deposit_enabled, state::total_locked);
+    return (state::deposits_enabled, state::total_locked);
 }

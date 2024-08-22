@@ -23,6 +23,14 @@ export function evmAddressToSlice(address: string): Slice {
     return beginCell().storeBuffer(buffer).asSlice();
 }
 
+// loads Slice to hex string `0x...`
+export function loadHexString(s: Slice, bytes: number): string {
+    const b = s.loadBuffer(bytes);
+    const hex = b.toString('hex');
+
+    return `0x${hex}`;
+}
+
 export function logGasUsage(tx: Transaction): void {
     const testName = expect.getState().currentTestName;
     console.log(`test "${testName}": gas used`, formatCoin(tx.totalFees.coins));

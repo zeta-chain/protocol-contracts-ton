@@ -1,5 +1,8 @@
 #include "../imports/stdlib.fc";
 
+const op_code_size = 32;
+const query_id_size = 64;
+
 ;; parses full message and returns (int flags, slice sender, slice rest_of_the_message)
 ;;
 ;; TL-B
@@ -19,8 +22,8 @@
 ;; parses the query from the message body
 ;; https://docs.ton.org/develop/smart-contracts/guidelines/internal-messages#internal-message-body
 (int, int) parse_intent(slice message_body) inline {
-    int op = message_body~load_uint(32);
-    int query_id = message_body~load_uint(64);
+    int op = message_body~load_uint(op_code_size);
+    int query_id = message_body~load_uint(query_id_size);
 
     return (op, query_id);
 }

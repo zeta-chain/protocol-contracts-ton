@@ -1,0 +1,32 @@
+#include "../imports/stdlib.fc";
+
+;; https://docs.ton.org/develop/smart-contracts/messages#message-modes
+const MESSAGE_MODE_ORDINARY = 0;
+
+;; TL-B
+;; ext_out_msg_info$11 src:MsgAddressInt dest:MsgAddressExt
+;;   created_lt:uint64 created_at:uint32 = CommonMsgInfo;
+;;
+;; message$_ {X:Type} info:CommonMsgInfo
+;;   init:(Maybe (Either StateInit ^StateInit))
+;;   body:(Either X ^X) = Message X;
+
+;; sends external oubound message w/o destination a.k.a log message
+() send_log_message(cell body) impure inline {
+    ~strdump("send_log_message");
+
+    cell msg = begin_cell()
+        .store_uint(3, 2) ;; ext_out_msg_info$11 src:MsgAddressInt ()
+        .store_slice(my_address())
+        .store_uint(0, 2)  ;; no destination (`addr_none$00 = MsgAddressExt`)
+        .store_uint(0x0, 64 + 32) ;; created_lt:uint64 created_at:uint32
+        .store_uint(0, 1) ;; no init
+        .store_uint(1, 1) ;; body is X not ^X (either)
+        .store_ref(body)
+        .end_cell();
+
+    send_raw_message(msg, MESSAGE_MODE_ORDINARY);
+}
+
+
+

@@ -10,7 +10,7 @@ import {
     Slice,
 } from '@ton/core';
 
-const opDeposit = 100;
+export const opDeposit = 100;
 
 export type GatewayConfig = {
     depositsEnabled: boolean;
@@ -79,4 +79,24 @@ export class Gateway implements Contract {
 
         return [depositsEnabled, valueLocked];
     }
+}
+
+export type DepositLog = {
+    op: number;
+    queryId: number;
+    sender: Address;
+    amount: bigint;
+    memo: Cell;
+};
+
+export function parseDepositLog(body: Cell): DepositLog {
+    const cs = body.beginParse();
+
+    const op = cs.loadUint(32);
+    const queryId = cs.loadUint(64);
+    const sender = cs.loadAddress();
+    const amount = cs.loadCoins();
+    const memo = cs.loadRef();
+
+    return { op, queryId, sender, amount, memo };
 }
