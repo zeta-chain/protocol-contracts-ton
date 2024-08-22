@@ -1,9 +1,10 @@
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
-import { Cell, toNano } from '@ton/core';
+import { Cell, toNano, Transaction } from '@ton/core';
 import { Gateway, GatewayConfig, opDeposit, parseDepositLog } from '../wrappers/Gateway';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
-import { evmAddressToSlice, expectTX, loadHexString, logGasUsage } from './utils'; // copied from `errors.fc`
+import { evmAddressToSlice, loadHexString, logGasUsage } from './utils';
+import { findTransaction, FlatTransactionComparable } from '@ton/test-utils/dist/test/transaction'; // copied from `errors.fc`
 
 // copied from `errors.fc`
 const err_no_intent = 101;
@@ -115,7 +116,7 @@ describe('Gateway', () => {
             success: true,
         });
 
-        logGasUsage(tx);
+        logGasUsage(expect, tx);
 
         // Check gateway balance
         const gatewayBalanceAfter = await gateway.getBalance();
@@ -153,3 +154,12 @@ describe('Gateway', () => {
     // todo check that gas costs are always less than 0.01 for long memos
     // todo deposits disabled
 });
+
+export function expectTX(transactions: Transaction[], cmp: FlatTransactionComparable): Transaction {
+    expect(transactions).toHaveTransaction(cmp);
+
+    const tx = findTransaction(transactions, cmp);
+    expect(tx).toBeDefined();
+
+    return tx!;
+}
