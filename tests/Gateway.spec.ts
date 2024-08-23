@@ -3,7 +3,7 @@ import { Cell, toNano, Transaction } from '@ton/core';
 import { Gateway, GatewayConfig, opDeposit, parseDepositLog } from '../wrappers/Gateway';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
-import { evmAddressToSlice, loadHexString, logGasUsage } from './utils';
+import { evmAddressToSlice, loadHexStringFromSlice, logGasUsage } from './utils';
 import { findTransaction, FlatTransactionComparable } from '@ton/test-utils/dist/test/transaction'; // copied from `errors.fc`
 
 // copied from `errors.fc`
@@ -11,6 +11,8 @@ const err_no_intent = 101;
 
 // copied from `gas.fc`
 const gas_fee = toNano('0.01');
+
+const tssAddress = '0x70e967acfcc17c3941e87562161406d41676fd83';
 
 describe('Gateway', () => {
     let code: Cell;
@@ -28,6 +30,7 @@ describe('Gateway', () => {
 
         const deployConfig: GatewayConfig = {
             depositsEnabled: true,
+            tssAddress: tssAddress,
         };
 
         gateway = blockchain.openContract(Gateway.createFromConfig(deployConfig, code));
@@ -49,10 +52,15 @@ describe('Gateway', () => {
 
         // ASSERT
         // Check that initial state is queried correctly
-        const [depositsEnabled, valueLocked] = await gateway.getQueryState();
+        const [depositsEnabled, valueLocked, tss] = await gateway.getQueryState();
 
         expect(depositsEnabled).toBe(true);
         expect(valueLocked).toBe(0n);
+        expect(tss).toBe(tssAddress);
+
+        // Check that seqno works and is zero
+        const nonce = await gateway.getSeqno();
+        expect(nonce).toBe(0);
     });
 
     it('should fail without opcode and query id', async () => {
@@ -141,7 +149,7 @@ describe('Gateway', () => {
         expect(depositLog.amount).toEqual(amount - gas_fee);
 
         // Check that memo logged properly
-        const memoAddress = loadHexString(depositLog.memo.asSlice(), 20);
+        const memoAddress = loadHexStringFromSlice(depositLog.memo.asSlice(), 20);
 
         expect(memoAddress).toEqual(evmAddress);
     });

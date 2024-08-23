@@ -6,9 +6,13 @@ import { evmAddressToSlice, formatCoin } from '../tests/utils'; // https://ether
 // https://etherscan.io/address/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
 const vitalikDotETH = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045';
 
+// TEST PURPOSES ONLY
+const tss = '0x70e967acfcc17c3941e87562161406d41676fd83';
+
 async function open(provider: NetworkProvider): Promise<OpenedContract<Gateway>> {
     const config: GatewayConfig = {
         depositsEnabled: true,
+        tssAddress: tss,
     };
 
     const code = await compile('Gateway');

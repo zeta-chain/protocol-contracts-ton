@@ -92,9 +92,16 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
     ;; todo who pays for the gas?
 }
 
-;; returns (bool `deposits enabled`, int `total TON locked`)
-(int, int) query_state() method_id {
+;; returns (int1 `deposits enabled`, int128 `total TON locked`, slice[20] `TSS address`)
+(int, int, slice) query_state() method_id {
     load_state();
 
-    return (state::deposits_enabled, state::total_locked);
+    return (state::deposits_enabled, state::total_locked, state::tss_address);
+}
+
+;; get nonce (int32)
+int seqno() method_id {
+    load_state();
+
+    return state::seqno;
 }

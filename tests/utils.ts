@@ -18,8 +18,11 @@ export function evmAddressToSlice(address: string): Slice {
 }
 
 // loads Slice to hex string `0x...`
-export function loadHexString(s: Slice, bytes: number): string {
-    const b = s.loadBuffer(bytes);
+export function loadHexStringFromSlice(s: Slice, bytes: number): string {
+    return loadHexStringFromBuffer(s.loadBuffer(bytes));
+}
+
+export function loadHexStringFromBuffer(b: Buffer): string {
     const hex = b.toString('hex');
 
     return `0x${hex}`;

@@ -9,19 +9,25 @@ import {
     SendMode,
     Slice,
 } from '@ton/core';
+import { evmAddressToSlice, loadHexStringFromBuffer } from '../tests/utils';
 
 export const opDeposit = 100;
 
 export type GatewayConfig = {
     depositsEnabled: boolean;
+    tssAddress: string;
 };
 
 // Initial state of the contract during deployment
 export function gatewayConfigToCell(config: GatewayConfig): Cell {
+    const tss = evmAddressToSlice(config.tssAddress);
+
     return beginCell()
-        .storeUint(config.depositsEnabled ? 1 : 0, 1)
-        .storeCoins(0) // valueLocked
+        .storeUint(config.depositsEnabled ? 1 : 0, 1) // deposits_enabled
+        .storeCoins(0) // total_locked
         .storeCoins(0) // fees
+        .storeUint(0, 32) // seqno
+        .storeSlice(tss) // tss_address
         .endCell();
 }
 
@@ -71,13 +77,20 @@ export class Gateway implements Contract {
         return state.balance;
     }
 
-    async getQueryState(provider: ContractProvider): Promise<[boolean, bigint]> {
+    async getQueryState(provider: ContractProvider): Promise<[boolean, bigint, string]> {
         const response = await provider.get('query_state', []);
 
         const depositsEnabled = response.stack.readBoolean();
         const valueLocked = response.stack.readBigNumber();
+        const tssAddress = loadHexStringFromBuffer(response.stack.readBuffer());
 
-        return [depositsEnabled, valueLocked];
+        return [depositsEnabled, valueLocked, tssAddress];
+    }
+
+    async getSeqno(provider: ContractProvider): Promise<number> {
+        const response = await provider.get('seqno', []);
+
+        return response.stack.readNumber();
     }
 }
 
