@@ -19,18 +19,10 @@ The project is built using [Blueprint](https://github.com/ton-org/blueprint).
 
 ## How to use
 
-### Build
+- Contract tests: `make test`
+- Contract scripts: `make run`
+- Contract compilation: `make compile`
 
-`npx blueprint build`
+## How it works
 
-### Test
-
-`npx blueprint test`
-
-### Deploy or run another script
-
-`npx blueprint run`
-
-### Add a new contract
-
-`npx blueprint create ContractName`
+`TBD`

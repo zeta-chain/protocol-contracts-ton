@@ -12,10 +12,18 @@ import {
 import { evmAddressToSlice, loadHexStringFromBuffer } from '../tests/utils';
 
 export const opDeposit = 100;
+export const opDonate = 101;
+export const opWithdraw = 200;
 
 export type GatewayConfig = {
     depositsEnabled: boolean;
     tssAddress: string;
+};
+
+export type AdminCommand = {
+    op: number;
+    signature: Slice;
+    payload: Cell;
 };
 
 // Initial state of the contract during deployment
@@ -69,6 +77,43 @@ export class Gateway implements Contract {
             sendMode: SendMode.PAY_GAS_SEPARATELY,
             body: body.endCell(),
         });
+    }
+
+    async sendDonation(provider: ContractProvider, via: Sender, value: bigint) {
+        let body = beginCell()
+            .storeUint(opDonate, 32) // op code
+            .storeUint(0, 64) // query id
+            .endCell();
+
+        await provider.internal(via, {
+            value,
+            sendMode: SendMode.PAY_GAS_SEPARATELY,
+            body,
+        });
+    }
+
+    /**
+     * Send an admin command to the contract as an external message
+     * @param provider
+     * @param cmd
+     */
+    async sendAdminCommand(provider: ContractProvider, cmd: AdminCommand) {
+        // SHA-256
+        const hash = cmd.payload.hash();
+        if (hash.byteLength != 32) {
+            throw new Error(`Invalid hash length (got ${hash.byteLength}, want 32)`);
+        }
+
+        const message = beginCell()
+            .storeUint(cmd.op, 32)
+            .storeBits(cmd.signature.loadBits(8)) // v
+            .storeBits(cmd.signature.loadBits(256)) // r
+            .storeBits(cmd.signature.loadBits(256)) // s
+            .storeBuffer(hash)
+            .storeRef(cmd.payload)
+            .endCell();
+
+        await provider.external(message);
     }
 
     async getBalance(provider: ContractProvider): Promise<bigint> {

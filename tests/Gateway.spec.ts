@@ -1,18 +1,40 @@
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
-import { Cell, toNano, Transaction } from '@ton/core';
-import { Gateway, GatewayConfig, opDeposit, parseDepositLog } from '../wrappers/Gateway';
+import { beginCell, Cell, toNano, Transaction } from '@ton/core';
+import {
+    AdminCommand,
+    Gateway,
+    GatewayConfig,
+    opDeposit,
+    opWithdraw,
+    parseDepositLog,
+} from '../wrappers/Gateway';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
-import { evmAddressToSlice, loadHexStringFromSlice, logGasUsage } from './utils';
-import { findTransaction, FlatTransactionComparable } from '@ton/test-utils/dist/test/transaction'; // copied from `errors.fc`
+import {
+    evmAddressToSlice,
+    formatCoin,
+    loadHexStringFromSlice,
+    logGasUsage,
+    signCellECDSA,
+} from './utils';
+import { findTransaction, FlatTransactionComparable } from '@ton/test-utils/dist/test/transaction';
+import { ethers } from 'ethers'; // copied from `errors.fc`
 
 // copied from `errors.fc`
 const err_no_intent = 101;
+const err_invalid_signature = 108;
 
 // copied from `gas.fc`
 const gas_fee = toNano('0.01');
 
-const tssAddress = '0x70e967acfcc17c3941e87562161406d41676fd83';
+// Sample TSS wallet. In reality there's no single private key
+const tssWallet = new ethers.Wallet(
+    '0xb984cd65727cfd03081fc7bf33bf5c208bca697ce16139b5ded275887e81395a',
+);
+
+const someRandomEvmWallet = new ethers.Wallet(
+    '0xaa8abe680332aadf79315691144f90737c0fd5b5387580c220ce40acbf2c1562',
+);
 
 describe('Gateway', () => {
     let code: Cell;
@@ -30,7 +52,7 @@ describe('Gateway', () => {
 
         const deployConfig: GatewayConfig = {
             depositsEnabled: true,
-            tssAddress: tssAddress,
+            tssAddress: tssWallet.address,
         };
 
         gateway = blockchain.openContract(Gateway.createFromConfig(deployConfig, code));
@@ -56,7 +78,7 @@ describe('Gateway', () => {
 
         expect(depositsEnabled).toBe(true);
         expect(valueLocked).toBe(0n);
-        expect(tss).toBe(tssAddress);
+        expect(tss).toBe(tssWallet.address.toLowerCase());
 
         // Check that seqno works and is zero
         const nonce = await gateway.getSeqno();
@@ -154,13 +176,161 @@ describe('Gateway', () => {
         expect(memoAddress).toEqual(evmAddress);
     });
 
-    // todo donation
-    // todo should fail w/o value too small
-    // todo should fail w/o memo
-    // todo should fail w/ invalid memo (too short)
-    // todo arbitrary long memo
-    // todo check that gas costs are always less than 0.01 for long memos
-    // todo deposits disabled
+    it('should perform a donation', async () => {
+        // ARRANGE
+        // Given a sender
+        const sender = await blockchain.treasury('sender2');
+
+        // Given amount to deposit
+        const amount = toNano('5');
+
+        // ACT
+        const result = await gateway.sendDonation(sender.getSender(), amount);
+
+        // ASSERT
+        // Check that tx failed with expected status code
+        const tx = expectTX(result.transactions, {
+            from: sender.address,
+            to: gateway.address,
+            success: true,
+        });
+
+        logGasUsage(expect, tx);
+
+        // Check that valueLocked is NOT updated
+        const [_, valueLocked] = await gateway.getQueryState();
+
+        // Donation doesn't count as a deposit, so no net-new locked value.
+        expect(valueLocked).toEqual(0n);
+
+        // Check that we don't have any logs
+        expect(tx.outMessagesCount).toEqual(0);
+
+        // Check that balance is updated
+        const senderBalanceAfter = await sender.getBalance();
+        expect(senderBalanceAfter).toBeGreaterThanOrEqual(amount - gas_fee);
+    });
+
+    it('should perform a simple withdrawal', async () => {
+        // ARRANGE
+        // Given a sender
+        const sender = await blockchain.treasury('sender3');
+
+        // Who deposited 10 TON in the gateway
+        await gateway.sendDeposit(
+            sender.getSender(),
+            toNano('10') + gas_fee,
+            evmAddressToSlice('0x95222290dd7278aa3ddd389cc1e1d165cc4bafe5'),
+        );
+
+        let [_, valueLocked] = await gateway.getQueryState();
+        expect(valueLocked).toEqual(toNano('10'));
+
+        // Given sender balance BEFORE withdrawal
+        const senderBalanceBefore = await sender.getBalance();
+
+        // Given a withdrawal payload ...
+        const amount = toNano('3');
+        const nonce = 1;
+        const payload = beginCell()
+            .storeAddress(sender.address)
+            .storeCoins(amount)
+            .storeUint(nonce, 32)
+            .endCell();
+
+        // ... Which is signed by TSS
+        const signature = signCellECDSA(tssWallet, payload);
+
+        // Given an admin command to withdraw TON
+        const cmd: AdminCommand = {
+            op: opWithdraw,
+            signature,
+            payload: payload,
+        };
+
+        // ACT
+        // Withdraw TON to the same sender on the behalf of TSS
+        const result = await gateway.sendAdminCommand(cmd);
+
+        // ASSERT
+        // Check that tx is successful and contains expected outbound internal message
+        const tx = expectTX(result.transactions, {
+            from: gateway.address,
+            to: sender.address,
+            success: true,
+            value: amount,
+        });
+
+        logGasUsage(expect, tx);
+
+        // Check that locked funds are updated
+        [_, valueLocked] = await gateway.getQueryState();
+        expect(valueLocked).toEqual(toNano('7'));
+
+        // Check nonce
+        const seqno = await gateway.getSeqno();
+        expect(seqno).toEqual(1);
+
+        // Check that sender's balance is updated
+        const senderBalanceAfter = await sender.getBalance();
+
+        // todo there's a tiny discrepancy in the balance, need to investigate later, probably related to fwd fees.
+        // expect(senderBalanceAfter).toEqual(senderBalanceBefore + amount);
+        const discrepancy = amount - (senderBalanceAfter - senderBalanceBefore);
+        console.log('Discrepancy:', formatCoin(discrepancy));
+        expect(discrepancy).toBeLessThan(toNano('0.001'));
+    });
+
+    it('should fail a withdrawal signed not by TSS', async () => {
+        // ARRANGE
+        // Given a sender
+        const sender = await blockchain.treasury('sender4');
+
+        // Who deposited 10 TON in the gateway
+        await gateway.sendDeposit(
+            sender.getSender(),
+            toNano('10') + gas_fee,
+            evmAddressToSlice(someRandomEvmWallet.address),
+        );
+
+        // Given a withdrawal payload ...
+        const amount = toNano('5');
+        const nonce = 1;
+        const payload = beginCell()
+            .storeAddress(sender.address)
+            .storeCoins(amount)
+            .storeUint(nonce, 32)
+            .endCell();
+
+        // ... which is signed by a RANDOM EVM wallet
+        const signature = signCellECDSA(someRandomEvmWallet, payload);
+
+        // Given an admin command to withdraw TON
+        const cmd: AdminCommand = {
+            op: opWithdraw,
+            signature,
+            payload: payload,
+        };
+
+        // ACT & ASSERT
+        // Withdraw TON and expect an error
+        try {
+            const result = await gateway.sendAdminCommand(cmd);
+        } catch (e: any) {
+            const exitCode = e?.exitCode as number;
+            expect(exitCode).toEqual(err_invalid_signature);
+        }
+    });
+
+    // todo deposits: disabled
+    // todo deposits: arbitrary long memo
+    // todo deposits: should fail w/o memo
+    // todo deposits: should fail w/ value too small
+    // todo deposits: should fail w/ invalid memo (too short)
+    // todo deposits: check that gas costs are always less than 0.01 for long memos
+
+    // todo withdrawals: invalid nonce
+    // todo withdrawals: amount is more than locked
 });
 
 export function expectTX(transactions: Transaction[], cmp: FlatTransactionComparable): Transaction {

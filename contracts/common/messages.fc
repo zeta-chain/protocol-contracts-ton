@@ -1,7 +1,9 @@
 #include "../imports/stdlib.fc";
 
 ;; https://docs.ton.org/develop/smart-contracts/messages#message-modes
-const MESSAGE_MODE_ORDINARY = 0;
+const message::mode::ordinary = 0;
+
+const message::flag::pay_fees_separately = 1;
 
 ;; TL-B
 ;; ext_out_msg_info$11 src:MsgAddressInt dest:MsgAddressExt
@@ -11,7 +13,7 @@ const MESSAGE_MODE_ORDINARY = 0;
 ;;   init:(Maybe (Either StateInit ^StateInit))
 ;;   body:(Either X ^X) = Message X;
 
-;; sends external oubound message w/o destination a.k.a log message
+;; sends an external oubound message w/o destination a.k.a log message
 () send_log_message(cell body) impure inline {
     ~strdump("send_log_message");
 
@@ -19,13 +21,60 @@ const MESSAGE_MODE_ORDINARY = 0;
         .store_uint(3, 2) ;; ext_out_msg_info$11 src:MsgAddressInt ()
         .store_slice(my_address())
         .store_uint(0, 2)  ;; no destination (`addr_none$00 = MsgAddressExt`)
-        .store_uint(0x0, 64 + 32) ;; created_lt:uint64 created_at:uint32
+        .store_uint(0, 64 + 32) ;; created_lt:uint64 created_at:uint32
         .store_uint(0, 1) ;; no init
         .store_uint(1, 1) ;; body is X not ^X (either)
         .store_ref(body)
         .end_cell();
 
-    send_raw_message(msg, MESSAGE_MODE_ORDINARY);
+    send_raw_message(msg, message::mode::ordinary);
+}
+
+;; - no Currency collection (1)
+;; - ihr_fee (4), fwd_fee (4)
+;; - created_lt (64), created_at (32)
+;; - no state_init (1)
+;; - body is a cell (1)
+const message_filler_bits = 1 + 4 + 4 + 64 + 32 + 1 + 1;
+
+;; int_msg_info$0 ihr_disabled:Bool bounce:Bool bounced:Bool src:MsgAddressInt (bits)
+;; 0 1 1 0 00 => 011000 => 24 dec => 0x18 hex for 6 bits
+;;
+;; Note that sender address will be set automatically
+const message_header_bits = 0x18;
+
+
+;; addr_std$10 anycast:(Maybe Anycast)
+;;    workchain_id:int8 address:bits256  = MsgAddressInt;
+builder store_msg_address_int(builder b, int wc, int addr) inline {
+    return b
+        .store_uint(0x4, 3) ;;  addr_std$10 anycast:(Maybe Anycast)
+        .store_uint(wc, 8)
+        .store_uint(addr, 256);
+}
+
+
+;; int_msg_info$0 ihr_disabled:Bool bounce:Bool bounced:Bool
+;;   src:MsgAddressInt dest:MsgAddressInt
+;;   value:CurrencyCollection ihr_fee:Grams fwd_fee:Grams
+;;   created_lt:uint64 created_at:uint32 = CommonMsgInfo;
+;;
+;; Sends an arbitrary internal message
+;; (uint256 recipient, uint128 amount, cell body, int mode)
+() send_simple_message(int recipient, int amount, cell body, int mode) impure inline {
+    ~strdump("send_simple_message");
+
+    ;; todo what happend if the recipient doesn't exits?
+    ;; todo what happens if the message is bounced?
+
+    cell msg = begin_cell()
+        .store_uint(message_header_bits, 6)
+        .store_msg_address_int(0, recipient)
+        .store_coins(amount)
+        .store_uint(0, message_filler_bits)
+        .end_cell();
+
+    send_raw_message(msg, mode);
 }
 
 
