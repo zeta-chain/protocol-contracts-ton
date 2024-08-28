@@ -2,6 +2,10 @@
 
 Contracts of official protocol contracts deployed by the core ZetaChain team.
 
+## ⚠️ Important Notice
+
+This repository is under active development and is not yet ready for production use.
+
 ## Learn more about ZetaChain
 
 * Check our [website](https://www.zetachain.com/).
