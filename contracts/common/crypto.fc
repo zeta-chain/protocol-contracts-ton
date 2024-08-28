@@ -1,0 +1,72 @@
+#pragma version >=0.4.0;
+
+#include "../imports/stdlib.fc";
+
+;; Returs keccak256 hash of the data as uint256
+int hash_keccak256(builder b, int n) asm "HASHEXT_KECCAK256";
+
+;; Recovers public key from ECDSA signature. Costs 1526 gas.
+;;
+;; fail: (int 0) ecdsa_recover(uint256 hash, uint8 v, uint256 r, uint256 s)
+;; success: (uint8 h, uint256 x1, uint256 x2, int  -1) ecdsa_recover(uint256 hash, uint8 v, uint256 r, uint256 s)
+;;
+;; https://docs.ton.org/learn/tvm-instructions/instructions
+(int, int, int, int) ecdsa_recover(int hash, int v, int r, int s) asm "ECRECOVER";
+
+;; TVM uses `v` ONLY as `0` or `1`. But in ETH / BTC, a prefix is used. See RFC6979
+;; See https://bitcoin.stackexchange.com/questions/38351/ecdsa-v-r-s-what-is-v
+int normalize_ecdsa_recovery_id(int v) inline {
+    ;; "compressed recovery_id for pub key"
+    if v >= 31 {
+        return v - 31;
+    }
+
+    ;; "uncompressed recovery_id for pub key"
+    if v >= 27 {
+        return v - 27;
+    }
+
+    return v;
+}
+
+;; Checks ECDSA signature. Returns int an an outcome:
+;; 1: unable to recover public key
+;; 2: recovered key is not uncompressed
+;; 3: recovered address does not match the expected address
+;; -1 (true): signature is valid
+(int) check_ecdsa_signature(int hash, slice signature, slice expected_evm_address) impure inline_ref {
+    ;; 1 Parse (v, r, s)
+    int v = signature~load_uint(8).normalize_ecdsa_recovery_id();
+    int r = signature~load_uint(256);
+    int s = signature~load_uint(256);
+
+    ;; 2. Recover public key
+    (int h, int x1, int x2, int flag) = ecdsa_recover(hash, v, r, s);
+    if flag != true {
+        return 1;
+    }
+
+    ;; Deny compressed public keys (0x04 prefix means uncompressed)
+    if h != 4 {
+        return 2;
+    }
+
+    ;; 3. Derrive 20 bytes evm address from the public key
+    int pub_key_hash = begin_cell()
+        .store_uint(x1, 256)
+        .store_uint(x2, 256)
+        .hash_keccak256(1);
+
+    slice actual_evm_address = begin_cell()
+        .store_uint(pub_key_hash, 256)
+        .end_cell()
+        .begin_parse()
+        .slice_last(20 * 8);
+
+    ;; 4. Compare with the expected address
+    if equal_slices(expected_evm_address, actual_evm_address) == false {
+        return 3;
+    }
+
+    return true;
+}

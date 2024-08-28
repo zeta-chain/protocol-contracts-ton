@@ -1,0 +1,44 @@
+#include "../imports/stdlib.fc";
+
+const size::deposits_enabled = 1;
+const size::seqno = 32;
+const size::tss_address = 160; ;; 20 bytes
+
+;; Boolean flag to enable/disable deposits
+global int state::deposits_enabled;
+
+;; Total locked TON in the gateway
+global int state::total_locked;
+
+;; Total fees collected by the gateway
+global int state::fees;
+
+;; nonce
+global int state::seqno;
+
+;; TSS address as 20 bytes (160 bits)
+global slice state::tss_address;
+
+() load_state() impure inline {
+    var cs = get_data().begin_parse();
+
+    state::deposits_enabled = cs~load_uint(size::deposits_enabled);
+
+    state::total_locked = cs~load_coins();
+    state::fees = cs~load_coins();
+
+    state::seqno = cs~load_uint(size::seqno);
+    state::tss_address = cs~load_bits(size::tss_address);
+}
+
+() mutate_state() impure inline {
+    var store = begin_cell()
+        .store_uint(state::deposits_enabled, size::deposits_enabled)
+        .store_coins(state::total_locked)
+        .store_coins(state::fees)
+        .store_uint(state::seqno, size::seqno)
+        .store_slice(state::tss_address)
+        .end_cell();
+
+    set_data(store);
+}
