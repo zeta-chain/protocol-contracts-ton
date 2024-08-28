@@ -376,6 +376,57 @@ describe('Gateway', () => {
         });
     });
 
+    it('should update tss address', async () => {
+        // ARRANGE
+        // Given some TON in the Gateway
+        await gateway.sendDonation(deployer.getSender(), toNano('10'));
+
+        // Given a new TSS address
+        // Let's say we've bumped the number of observer&signers, thus we require a new TSS wallet
+        const newTss = new ethers.Wallet(
+            '0x428239b1357227e03543875521be772c3126d383c4422328503cd0ac42e4ea0b',
+        );
+
+        console.log('New TSS', newTss.address);
+
+        // ACT 1
+        // Update TSS address
+        const result1 = await gateway.sendUpdateTSS(tssWallet, newTss.address);
+
+        // ASSERT 1
+        // Check that tx is successful
+        expectTX(result1.transactions, {
+            from: undefined,
+            to: gateway.address,
+            op: GatewayOp.UpdateTSS,
+        });
+
+        // Check that tss was updated
+        const { 2: tss } = await gateway.getQueryState();
+        expect(tss).toEqual(newTss.address.toLowerCase());
+
+        // ACT 2
+        // Do the same operation
+        // Obviously, it should fail, because the TSS was already updated
+        try {
+            await gateway.sendUpdateTSS(tssWallet, newTss.address);
+        } catch (e: any) {
+            const exitCode = e?.exitCode as number;
+            expect(exitCode).toEqual(GatewayError.InvalidSignature);
+        }
+
+        // ACT 3
+        // Now let's try to invoke an admin command with the new TSS
+        const result3 = await gateway.sendEnableDeposits(newTss, true);
+
+        // ASSERT 3
+        expectTX(result3.transactions, {
+            from: undefined,
+            to: gateway.address,
+            success: true,
+        });
+    });
+
     // todo deposits: arbitrary long memo
     // todo deposits: should fail w/o memo
     // todo deposits: should fail w/ value too small

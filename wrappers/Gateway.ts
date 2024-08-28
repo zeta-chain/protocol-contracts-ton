@@ -19,6 +19,7 @@ export enum GatewayOp {
 
     Withdraw = 200,
     SetDepositsEnabled = 201,
+    UpdateTSS = 202,
 }
 
 // copied from `errors.fc`
@@ -106,7 +107,7 @@ export class Gateway implements Contract {
     }
 
     async sendEnableDeposits(provider: ContractProvider, signer: Wallet, enabled: boolean) {
-        const nextSeqno = (await this.getSeqno(provider)) + 1;
+        const nextSeqno = await this.getNextSeqno(provider);
         const payload = beginCell().storeBit(enabled).storeUint(nextSeqno, 32).endCell();
 
         return await this.signAndSendAdminCommand(
@@ -115,6 +116,16 @@ export class Gateway implements Contract {
             GatewayOp.SetDepositsEnabled,
             payload,
         );
+    }
+
+    async sendUpdateTSS(provider: ContractProvider, signer: Wallet, newTSS: string) {
+        const nextSeqno = await this.getNextSeqno(provider);
+        const payload = beginCell()
+            .storeSlice(evmAddressToSlice(newTSS))
+            .storeUint(nextSeqno, 32)
+            .endCell();
+
+        return await this.signAndSendAdminCommand(provider, signer, GatewayOp.UpdateTSS, payload);
     }
 
     /**
@@ -180,6 +191,10 @@ export class Gateway implements Contract {
         const response = await provider.get('seqno', []);
 
         return response.stack.readNumber();
+    }
+
+    private async getNextSeqno(provider: ContractProvider): Promise<number> {
+        return (await this.getSeqno(provider)) + 1;
     }
 }
 
