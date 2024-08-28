@@ -14,10 +14,11 @@ const size::signature_size = 65 * 8;
 const size::hash_size = 32 * 8;
 
 ;; OP CODES ========================================
-const op::deposit = 100;
-const op::donate = 101;
+const op::internal::deposit = 100;
+const op::internal::donate = 101;
 
-const op::withdraw = 200;
+const op::external::withdraw = 200;
+const op::external::set_deposits_enabled = 201;
 
 ;; GAS FEE =========================================
 ;; Let's use const for now and refine this later
@@ -72,7 +73,7 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
 
     ;; Logs `$sender deposited $deposit_amount TON with $memo`
     cell log = begin_cell()
-        .store_uint(op::deposit, size::op_code_size)
+        .store_uint(op::internal::deposit, size::op_code_size)
         .store_uint(0, size::query_id_size)
         .store_slice(sender)
         .store_coins(deposit_amount)
@@ -105,13 +106,14 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
     load_state();
 
     ;; Just accept the incoming value
-    if (op == op::donate) {
+    if (op == op::internal::donate) {
         throw_if(error::insufficient_value, msg_value < deposit_gas_fee);
 
         return ();
     }
 
-    if (op == op::deposit) {
+    if (op == op::internal::deposit) {
+        throw_if(error::deposits_disabled, state::deposits_enabled == 0);
         throw_if(error::insufficient_value, msg_value < deposit_gas_fee);
 
         ;; expect a ref with a memo
@@ -147,6 +149,7 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
     return payload;
 }
 
+;; handle_withdrawal (recipient, amount, seqno)
 () handle_withdrawal(slice message) impure inline {
     load_state();
 
@@ -177,12 +180,40 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
     mutate_state();
 }
 
+;; handle_enable_deposits (enabled, seqno)
+() handle_enable_deposits(slice message) impure inline {
+    load_state();
+
+    slice payload = authenticate_external_message(message).begin_parse();
+
+    int enabled = payload~load_uint(1);
+    int seqno = payload~load_uint(size::seqno);
+
+    throw_if(error::invalid_seqno, seqno != (state::seqno + 1));
+
+    accept_message();
+
+    ;; noop
+    if (enabled == state::deposits_enabled) {
+        return ();
+    }
+
+    state::deposits_enabled = enabled;
+    state::seqno += 1;
+
+    mutate_state();
+}
+
 ;; Input for all external messages
 () recv_external(slice message) impure {
     int op = message~load_uint(size::op_code_size);
 
-    if (op == op::withdraw) {
+    if (op == op::external::withdraw) {
         return handle_withdrawal(message);
+    }
+
+    if (op == op::external::set_deposits_enabled) {
+        return handle_enable_deposits(message);
     }
 
     throw(error::unknown_op);

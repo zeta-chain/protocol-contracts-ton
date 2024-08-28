@@ -9,11 +9,24 @@ import {
     SendMode,
     Slice,
 } from '@ton/core';
-import { evmAddressToSlice, loadHexStringFromBuffer } from '../tests/utils';
+import { evmAddressToSlice, loadHexStringFromBuffer, signCellECDSA } from '../tests/utils';
+import { Wallet } from 'ethers';
 
-export const opDeposit = 100;
-export const opDonate = 101;
-export const opWithdraw = 200;
+// copied from `gateway.fc`
+export enum GatewayOp {
+    Deposit = 100,
+    Donate = 101,
+
+    Withdraw = 200,
+    SetDepositsEnabled = 201,
+}
+
+// copied from `errors.fc`
+export enum GatewayError {
+    NoIntent = 101,
+    InvalidSignature = 108,
+    DepositsDisabled = 110,
+}
 
 export type GatewayConfig = {
     depositsEnabled: boolean;
@@ -65,7 +78,7 @@ export class Gateway implements Contract {
 
     async sendDeposit(provider: ContractProvider, via: Sender, value: bigint, memo: Slice | null) {
         let body = beginCell()
-            .storeUint(opDeposit, 32) // op code
+            .storeUint(GatewayOp.Deposit, 32) // op code
             .storeUint(0, 64); // query id
 
         if (memo) {
@@ -81,7 +94,7 @@ export class Gateway implements Contract {
 
     async sendDonation(provider: ContractProvider, via: Sender, value: bigint) {
         let body = beginCell()
-            .storeUint(opDonate, 32) // op code
+            .storeUint(GatewayOp.Donate, 32) // op code
             .storeUint(0, 64) // query id
             .endCell();
 
@@ -90,6 +103,37 @@ export class Gateway implements Contract {
             sendMode: SendMode.PAY_GAS_SEPARATELY,
             body,
         });
+    }
+
+    async sendEnableDeposits(provider: ContractProvider, signer: Wallet, enabled: boolean) {
+        const nextSeqno = (await this.getSeqno(provider)) + 1;
+        const payload = beginCell().storeBit(enabled).storeUint(nextSeqno, 32).endCell();
+
+        return await this.signAndSendAdminCommand(
+            provider,
+            signer,
+            GatewayOp.SetDepositsEnabled,
+            payload,
+        );
+    }
+
+    /**
+     * Sign external message using ECDSA private key and send it to the contract
+     *
+     * @param provider
+     * @param signer
+     * @param op
+     * @param payload
+     */
+    async signAndSendAdminCommand(
+        provider: ContractProvider,
+        signer: Wallet,
+        op: number,
+        payload: Cell,
+    ) {
+        const signature = signCellECDSA(signer, payload);
+
+        return await this.sendAdminCommand(provider, { op, payload, signature });
     }
 
     /**

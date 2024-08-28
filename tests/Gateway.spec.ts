@@ -4,8 +4,8 @@ import {
     AdminCommand,
     Gateway,
     GatewayConfig,
-    opDeposit,
-    opWithdraw,
+    GatewayError,
+    GatewayOp,
     parseDepositLog,
 } from '../wrappers/Gateway';
 import '@ton/test-utils';
@@ -20,12 +20,8 @@ import {
 import { findTransaction, FlatTransactionComparable } from '@ton/test-utils/dist/test/transaction';
 import { ethers } from 'ethers'; // copied from `errors.fc`
 
-// copied from `errors.fc`
-const err_no_intent = 101;
-const err_invalid_signature = 108;
-
 // copied from `gas.fc`
-const gas_fee = toNano('0.01');
+const gasFee = toNano('0.01');
 
 // Sample TSS wallet. In reality there's no single private key
 const tssWallet = new ethers.Wallet(
@@ -108,7 +104,7 @@ describe('Gateway', () => {
             from: sender.address,
             to: gateway.address,
             success: false,
-            exitCode: err_no_intent,
+            exitCode: GatewayError.NoIntent,
         });
 
         // Make sure that balance is decreased by gas fee ...
@@ -151,13 +147,13 @@ describe('Gateway', () => {
         // Check gateway balance
         const gatewayBalanceAfter = await gateway.getBalance();
 
-        // result should be >= (before + amount - gas_fee)
-        expect(gatewayBalanceAfter).toBeGreaterThanOrEqual(gatewayBalanceBefore + amount - gas_fee);
+        // result should be >= (before + amount - gasFee)
+        expect(gatewayBalanceAfter).toBeGreaterThanOrEqual(gatewayBalanceBefore + amount - gasFee);
 
         // Check that valueLocked is updated
         const [_, valueLocked] = await gateway.getQueryState();
 
-        expect(valueLocked).toEqual(amount - gas_fee);
+        expect(valueLocked).toEqual(amount - gasFee);
 
         // Check that we have a log with the exact amount
         expect(tx.outMessagesCount).toEqual(1);
@@ -165,10 +161,10 @@ describe('Gateway', () => {
         // Check for data in the log message
         const depositLog = parseDepositLog(tx.outMessages.get(0)!.body);
 
-        expect(depositLog.op).toEqual(opDeposit);
+        expect(depositLog.op).toEqual(GatewayOp.Deposit);
         expect(depositLog.queryId).toEqual(0);
         expect(depositLog.sender.toRawString()).toEqual(sender.address.toRawString());
-        expect(depositLog.amount).toEqual(amount - gas_fee);
+        expect(depositLog.amount).toEqual(amount - gasFee);
 
         // Check that memo logged properly
         const memoAddress = loadHexStringFromSlice(depositLog.memo.asSlice(), 20);
@@ -208,7 +204,7 @@ describe('Gateway', () => {
 
         // Check that balance is updated
         const senderBalanceAfter = await sender.getBalance();
-        expect(senderBalanceAfter).toBeGreaterThanOrEqual(amount - gas_fee);
+        expect(senderBalanceAfter).toBeGreaterThanOrEqual(amount - gasFee);
     });
 
     it('should perform a simple withdrawal', async () => {
@@ -219,7 +215,7 @@ describe('Gateway', () => {
         // Who deposited 10 TON in the gateway
         await gateway.sendDeposit(
             sender.getSender(),
-            toNano('10') + gas_fee,
+            toNano('10') + gasFee,
             evmAddressToSlice('0x95222290dd7278aa3ddd389cc1e1d165cc4bafe5'),
         );
 
@@ -243,7 +239,7 @@ describe('Gateway', () => {
 
         // Given an admin command to withdraw TON
         const cmd: AdminCommand = {
-            op: opWithdraw,
+            op: GatewayOp.Withdraw,
             signature,
             payload: payload,
         };
@@ -289,7 +285,7 @@ describe('Gateway', () => {
         // Who deposited 10 TON in the gateway
         await gateway.sendDeposit(
             sender.getSender(),
-            toNano('10') + gas_fee,
+            toNano('10') + gasFee,
             evmAddressToSlice(someRandomEvmWallet.address),
         );
 
@@ -306,11 +302,7 @@ describe('Gateway', () => {
         const signature = signCellECDSA(someRandomEvmWallet, payload);
 
         // Given an admin command to withdraw TON
-        const cmd: AdminCommand = {
-            op: opWithdraw,
-            signature,
-            payload: payload,
-        };
+        const cmd: AdminCommand = { op: GatewayOp.Withdraw, signature, payload };
 
         // ACT & ASSERT
         // Withdraw TON and expect an error
@@ -318,11 +310,72 @@ describe('Gateway', () => {
             const result = await gateway.sendAdminCommand(cmd);
         } catch (e: any) {
             const exitCode = e?.exitCode as number;
-            expect(exitCode).toEqual(err_invalid_signature);
+            expect(exitCode).toEqual(GatewayError.InvalidSignature);
         }
     });
 
-    // todo deposits: disabled
+    it('should exercise deposits enablement toggle', async () => {
+        // ARRANGE
+        // Given a sender
+        const sender = await blockchain.treasury('sender5');
+
+        // Given some donation to the Gateway
+        await gateway.sendDonation(sender.getSender(), toNano('10'));
+
+        // ACT 1
+        // Disable deposits
+        const result1 = await gateway.sendEnableDeposits(tssWallet, false);
+
+        // ASSERT 1
+        expectTX(result1.transactions, {
+            from: undefined,
+            to: gateway.address,
+            success: true,
+        });
+
+        // Check that deposits are disabled
+        const [depositsEnabled] = await gateway.getQueryState();
+        expect(depositsEnabled).toBe(false);
+
+        // ACT 2
+        // Send sample deposit
+        const result2 = await gateway.sendDeposit(sender.getSender(), toNano('1'), null);
+
+        // ASSERT 2
+        // It should fail
+        expectTX(result2.transactions, {
+            from: sender.address,
+            to: gateway.address,
+            success: false,
+            exitCode: GatewayError.DepositsDisabled,
+        });
+
+        // ACT 3
+        // Enable deposits back
+        const result3 = await gateway.sendEnableDeposits(tssWallet, true);
+        expectTX(result3.transactions, {
+            from: undefined,
+            to: gateway.address,
+            success: true,
+        });
+
+        // ACT 4
+        // Send another deposit
+        const result4 = await gateway.sendDeposit(
+            sender.getSender(),
+            toNano('1'),
+            evmAddressToSlice('0x23f4569002a5a07f0ecf688142eeb6bcd883eef8'),
+        );
+
+        // ASSERT 4
+        // It should succeed
+        expectTX(result4.transactions, {
+            from: sender.address,
+            to: gateway.address,
+            success: true,
+        });
+    });
+
     // todo deposits: arbitrary long memo
     // todo deposits: should fail w/o memo
     // todo deposits: should fail w/ value too small

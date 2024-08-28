@@ -28,3 +28,6 @@ const error::invalid_signature = 108;
 
 ;; Nonce is invalid
 const error::invalid_seqno = 109;
+
+;; Deposits are disabled
+const error::deposits_disabled = 110;
