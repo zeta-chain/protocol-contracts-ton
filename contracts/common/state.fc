@@ -2,7 +2,7 @@
 
 const size::deposits_enabled = 1;
 const size::seqno = 32;
-const size::tss_address = 160; ;; 20 bytes
+const size::evm_address = 160; ;; 20 bytes
 
 ;; Boolean flag to enable/disable deposits
 global int state::deposits_enabled;
@@ -28,7 +28,7 @@ global slice state::tss_address;
     state::fees = cs~load_coins();
 
     state::seqno = cs~load_uint(size::seqno);
-    state::tss_address = cs~load_bits(size::tss_address);
+    state::tss_address = cs~load_bits(size::evm_address);
 }
 
 () mutate_state() impure inline_ref {
