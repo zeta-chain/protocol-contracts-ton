@@ -10,12 +10,13 @@ import {
     Slice,
 } from '@ton/core';
 import { evmAddressToSlice, loadHexStringFromBuffer, signCellECDSA } from '../tests/utils';
-import { Wallet } from 'ethers';
+import { Wallet } from 'ethers'; // copied from `gateway.fc`
 
 // copied from `gateway.fc`
 export enum GatewayOp {
-    Deposit = 100,
-    Donate = 101,
+    Donate = 100,
+    Deposit = 101,
+    DepositAndCall = 102,
 
     Withdraw = 200,
     SetDepositsEnabled = 201,
@@ -78,20 +79,26 @@ export class Gateway implements Contract {
         });
     }
 
-    async sendDeposit(provider: ContractProvider, via: Sender, value: bigint, memo: Slice | null) {
-        let body = beginCell()
-            .storeUint(GatewayOp.Deposit, 32) // op code
-            .storeUint(0, 64); // query id
-
-        if (memo) {
-            body = body.storeRef(beginCell().storeSlice(memo).endCell());
+    async sendDeposit(
+        provider: ContractProvider,
+        via: Sender,
+        value: bigint,
+        zevmRecipient: string | bigint,
+    ) {
+        // accept bigInt or hex string
+        if (typeof zevmRecipient === 'string') {
+            zevmRecipient = BigInt(zevmRecipient);
         }
 
-        await provider.internal(via, {
-            value,
-            sendMode: SendMode.PAY_GAS_SEPARATELY,
-            body: body.endCell(),
-        });
+        const body = beginCell()
+            .storeUint(GatewayOp.Deposit, 32) // op code
+            .storeUint(0, 64) // query id
+            .storeUint(zevmRecipient, 160) // 20 bytes
+            .endCell();
+
+        const sendMode = SendMode.PAY_GAS_SEPARATELY;
+
+        await provider.internal(via, { value, sendMode, body });
     }
 
     async sendDonation(provider: ContractProvider, via: Sender, value: bigint) {
@@ -211,7 +218,7 @@ export type DepositLog = {
     queryId: number;
     sender: Address;
     amount: bigint;
-    memo: Cell;
+    recipient: string;
 };
 
 export function parseDepositLog(body: Cell): DepositLog {
@@ -221,7 +228,7 @@ export function parseDepositLog(body: Cell): DepositLog {
     const queryId = cs.loadUint(64);
     const sender = cs.loadAddress();
     const amount = cs.loadCoins();
-    const memo = cs.loadRef();
+    const recipient = loadHexStringFromBuffer(cs.loadBuffer(20));
 
-    return { op, queryId, sender, amount, memo };
+    return { op, queryId, sender, amount, recipient };
 }

@@ -9,13 +9,13 @@
 ;; Sizes ===========================================
 const size::op_code_size = 32;
 const size::query_id_size = 64;
-const size::memo_min = 20 * 8;
 const size::signature_size = 65 * 8;
 const size::hash_size = 32 * 8;
 
 ;; OP CODES ========================================
-const op::internal::deposit = 100;
-const op::internal::donate = 101;
+const op::internal::donate = 100;
+const op::internal::deposit = 101;
+const op::internal::deposit_and_call = 102;
 
 const op::external::withdraw = 200;
 const op::external::set_deposits_enabled = 201;
@@ -30,11 +30,11 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
 
 ;; parses the query from the message body
 ;; https://docs.ton.org/develop/smart-contracts/guidelines/internal-messages#internal-message-body
-(int, int) parse_intent(slice message_body) impure inline {
+(slice, (int, int)) ~parse_intent(slice message_body) impure inline {
     int op = message_body~load_uint(size::op_code_size);
     int query_id = message_body~load_uint(size::query_id_size);
 
-    return (op, query_id);
+    return (message_body, (op, query_id));
 }
 
 ;; parses full message and returns (int flags, slice sender, slice rest_of_the_message)
@@ -55,31 +55,30 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
 
 ;; INTERNAL MESSAGES ===============================
 
-;; deposit TON to the gateway
-() handle_deposit(slice sender, int amount, cell memo_cell) impure inline {
-    ;; Validate memo
-    slice memo = memo_cell.begin_parse();
+;; Checks that deposits are enabled
+() guard_deposits() impure inline_ref {
+    throw_if(error::deposits_disabled, state::deposits_enabled == 0);
+}
 
-    ;; EVM address is 20 bytes, so the memo should be at least 20 bytes long
-    throw_if(error::memo_is_too_short, memo.slice_bits() < size::memo_min);
-    ;; todo check if memo is too long. We don't want to have DDOS due to long memos (gas > 0.01 TON)
+;; deposit TON to the gateway and specify the EVM recipient on ZetaChain
+() handle_deposit(slice sender, int amount, int evm_recipient) impure inline {
+    load_state();
+    guard_deposits();
 
-    ;; Update state
-    var deposit_amount = amount - deposit_gas_fee;
+    int deposit_amount = amount - deposit_gas_fee;
 
     state::total_locked += deposit_amount;
     state::fees += deposit_gas_fee;
 
-    ;; Update the state
     mutate_state();
 
-    ;; Logs `$sender deposited $deposit_amount TON with $memo`
+    ;; Logs `$sender deposited $deposit_amount TON to $evm_recipient`
     cell log = begin_cell()
         .store_uint(op::internal::deposit, size::op_code_size)
         .store_uint(0, size::query_id_size)
         .store_slice(sender)
         .store_coins(deposit_amount)
-        .store_ref(memo_cell)
+        .store_uint(evm_recipient, size::evm_address)
         .end_cell();
 
     send_log_message(log);
@@ -103,27 +102,20 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
     throw_if(error::no_intent, in_msg_body.slice_bits() < (size::op_code_size + size::query_id_size));
 
     ;; query_id is not used for now.
-    (int op, _) = in_msg_body.parse_intent();
-
-    load_state();
+    (int op, _) = in_msg_body~parse_intent();
 
     ;; Just accept the incoming value
     if (op == op::internal::donate) {
-        throw_if(error::insufficient_value, msg_value < deposit_gas_fee);
-
         return ();
     }
 
     if (op == op::internal::deposit) {
-        throw_if(error::deposits_disabled, state::deposits_enabled == 0);
         throw_if(error::insufficient_value, msg_value < deposit_gas_fee);
+        throw_if(error::invalid_evm_recipient, in_msg_body.slice_bits() < size::evm_address);
 
-        ;; expect a ref with a memo
-        throw_unless(error::memo_is_empty, in_msg_body.slice_refs());
+        int evm_recipient = in_msg_body~load_uint(size::evm_address);
 
-        cell memo = in_msg_body~load_ref();
-
-        return handle_deposit(sender, msg_value, memo);
+        return handle_deposit(sender, msg_value, evm_recipient);
     }
 
     throw(error::unknown_op);
@@ -214,7 +206,7 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
 
     slice payload = authenticate_external_message(message).begin_parse();
 
-    slice new_tss_address = payload~load_bits(size::tss_address);
+    slice new_tss_address = payload~load_bits(size::evm_address);
     int seqno = payload~load_uint(size::seqno);
 
     throw_if(error::invalid_seqno, seqno != (state::seqno + 1));

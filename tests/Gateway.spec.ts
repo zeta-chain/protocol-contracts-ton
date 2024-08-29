@@ -120,13 +120,12 @@ describe('Gateway', () => {
 
         // Given memo with EVM address (20 bytes)
         const evmAddress = '0x92215391d24c75eb005eb4b7c8c55bf0036604a5';
-        const memo = utils.evmAddressToSlice(evmAddress);
 
         // Given amount to deposit
         const amount = toNano('1');
 
         // ACT
-        const result = await gateway.sendDeposit(sender.getSender(), amount, memo);
+        const result = await gateway.sendDeposit(sender.getSender(), amount, evmAddress);
 
         // ASSERT
         // Check that tx failed with expected status code
@@ -159,11 +158,7 @@ describe('Gateway', () => {
         expect(depositLog.queryId).toEqual(0);
         expect(depositLog.sender.toRawString()).toEqual(sender.address.toRawString());
         expect(depositLog.amount).toEqual(amount - gasFee);
-
-        // Check that memo logged properly
-        const memoAddress = utils.loadHexStringFromSlice(depositLog.memo.asSlice(), 20);
-
-        expect(memoAddress).toEqual(evmAddress);
+        expect(depositLog.recipient).toEqual(evmAddress);
     });
 
     it('should perform a donation', async () => {
@@ -210,7 +205,7 @@ describe('Gateway', () => {
         await gateway.sendDeposit(
             sender.getSender(),
             toNano('10') + gasFee,
-            utils.evmAddressToSlice('0x95222290dd7278aa3ddd389cc1e1d165cc4bafe5'),
+            '0x95222290dd7278aa3ddd389cc1e1d165cc4bafe5',
         );
 
         let [_, valueLocked] = await gateway.getQueryState();
@@ -280,7 +275,7 @@ describe('Gateway', () => {
         await gateway.sendDeposit(
             sender.getSender(),
             toNano('10') + gasFee,
-            utils.evmAddressToSlice(someRandomEvmWallet.address),
+            someRandomEvmWallet.address,
         );
 
         // Given a withdrawal payload ...
@@ -333,7 +328,7 @@ describe('Gateway', () => {
 
         // ACT 2
         // Send sample deposit
-        const result2 = await gateway.sendDeposit(sender.getSender(), toNano('1'), null);
+        const result2 = await gateway.sendDeposit(sender.getSender(), toNano('1'), 123n);
 
         // ASSERT 2
         // It should fail
@@ -358,7 +353,7 @@ describe('Gateway', () => {
         const result4 = await gateway.sendDeposit(
             sender.getSender(),
             toNano('1'),
-            utils.evmAddressToSlice('0x23f4569002a5a07f0ecf688142eeb6bcd883eef8'),
+            '0x23f4569002a5a07f0ecf688142eeb6bcd883eef8',
         );
 
         // ASSERT 4
@@ -456,7 +451,7 @@ describe('Gateway', () => {
         // Try to trigger some TSS command
         // It should fail because external_message is not implemented anymore! :troll:
         try {
-            const result3 = await gateway.sendEnableDeposits(tssWallet, true);
+            await gateway.sendEnableDeposits(tssWallet, true);
         } catch (e: any) {
             // https://docs.ton.org/learn/tvm-instructions/tvm-exit-codes
             const exitCode = e?.exitCode as number;

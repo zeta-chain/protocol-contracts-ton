@@ -8,11 +8,10 @@ const error::no_intent = 101;
 ;; Unknown opcode
 const error::unknown_op = 102;
 
-;; No memoe provided
-const error::memo_is_empty = 103;
+;; Invalid EVM recipient (should be 20 bytes slice)
+const error::invalid_evm_recipient = 103;
 
-;; Memo is too short (less than 20 bytes)
-const error::memo_is_too_short = 104;
+;; todo 104 is reserved;
 
 ;; We only want to support workchain 0 aka "basechain"
 const error::wrong_workchain = 105;
