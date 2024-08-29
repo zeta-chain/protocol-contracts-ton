@@ -1,14 +1,5 @@
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
 import { beginCell, Cell, toNano, Transaction } from '@ton/core';
-import {
-    AdminCommand,
-    Gateway,
-    GatewayConfig,
-    GatewayError,
-    GatewayOp,
-    parseDepositAndCallLog,
-    parseDepositLog,
-} from '../wrappers/Gateway';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
 import * as utils from './utils';
@@ -17,6 +8,7 @@ import { ethers } from 'ethers';
 import { stringToCell } from '@ton/core/dist/boc/utils/strings';
 import path from 'node:path';
 import * as fs from 'node:fs';
+import * as gw from '../wrappers/Gateway';
 
 // copied from `gas.fc`
 const gasFee = toNano('0.01');
@@ -39,17 +31,17 @@ describe('Gateway', () => {
 
     let blockchain: Blockchain;
     let deployer: SandboxContract<TreasuryContract>;
-    let gateway: SandboxContract<Gateway>;
+    let gateway: SandboxContract<gw.Gateway>;
 
     beforeEach(async () => {
         blockchain = await Blockchain.create();
 
-        const deployConfig: GatewayConfig = {
+        const deployConfig: gw.GatewayConfig = {
             depositsEnabled: true,
             tssAddress: tssWallet.address,
         };
 
-        gateway = blockchain.openContract(Gateway.createFromConfig(deployConfig, code));
+        gateway = blockchain.openContract(gw.Gateway.createFromConfig(deployConfig, code));
 
         deployer = await blockchain.treasury('deployer');
 
@@ -102,7 +94,7 @@ describe('Gateway', () => {
             from: sender.address,
             to: gateway.address,
             success: false,
-            exitCode: GatewayError.NoIntent,
+            exitCode: gw.GatewayError.NoIntent,
         });
 
         // Make sure that balance is decreased by gas fee ...
@@ -156,9 +148,9 @@ describe('Gateway', () => {
         expect(tx.outMessagesCount).toEqual(1);
 
         // Check for data in the log message
-        const depositLog = parseDepositLog(tx.outMessages.get(0)!.body);
+        const depositLog = gw.parseDepositLog(tx.outMessages.get(0)!.body);
 
-        expect(depositLog.op).toEqual(GatewayOp.Deposit);
+        expect(depositLog.op).toEqual(gw.GatewayOp.Deposit);
         expect(depositLog.queryId).toEqual(0);
         expect(depositLog.sender.toRawString()).toEqual(sender.address.toRawString());
         expect(depositLog.amount).toEqual(amount - gasFee);
@@ -196,9 +188,9 @@ describe('Gateway', () => {
         utils.logGasUsage(expect, tx);
 
         // Check log
-        const log = parseDepositAndCallLog(tx.outMessages.get(0)!.body);
+        const log = gw.parseDepositAndCallLog(tx.outMessages.get(0)!.body);
 
-        expect(log.op).toEqual(GatewayOp.DepositAndCall);
+        expect(log.op).toEqual(gw.GatewayOp.DepositAndCall);
         expect(log.queryId).toEqual(0);
         expect(log.sender.toRawString()).toEqual(sender.address.toRawString());
         expect(log.amount).toEqual(amount - gasFee);
@@ -272,8 +264,8 @@ describe('Gateway', () => {
         const signature = utils.signCellECDSA(tssWallet, payload);
 
         // Given an admin command to withdraw TON
-        const cmd: AdminCommand = {
-            op: GatewayOp.Withdraw,
+        const cmd: gw.AdminCommand = {
+            op: gw.GatewayOp.Withdraw,
             signature,
             payload: payload,
         };
@@ -336,7 +328,7 @@ describe('Gateway', () => {
         const signature = utils.signCellECDSA(someRandomEvmWallet, payload);
 
         // Given an admin command to withdraw TON
-        const cmd: AdminCommand = { op: GatewayOp.Withdraw, signature, payload };
+        const cmd: gw.AdminCommand = { op: gw.GatewayOp.Withdraw, signature, payload };
 
         // ACT & ASSERT
         // Withdraw TON and expect an error
@@ -344,7 +336,7 @@ describe('Gateway', () => {
             const result = await gateway.sendAdminCommand(cmd);
         } catch (e: any) {
             const exitCode = e?.exitCode as number;
-            expect(exitCode).toEqual(GatewayError.InvalidSignature);
+            expect(exitCode).toEqual(gw.GatewayError.InvalidSignature);
         }
     });
 
@@ -381,7 +373,7 @@ describe('Gateway', () => {
             from: sender.address,
             to: gateway.address,
             success: false,
-            exitCode: GatewayError.DepositsDisabled,
+            exitCode: gw.GatewayError.DepositsDisabled,
         });
 
         // ACT 3
@@ -432,7 +424,7 @@ describe('Gateway', () => {
         expectTX(result1.transactions, {
             from: undefined,
             to: gateway.address,
-            op: GatewayOp.UpdateTSS,
+            op: gw.GatewayOp.UpdateTSS,
         });
 
         // Check that tss was updated
@@ -446,7 +438,7 @@ describe('Gateway', () => {
             await gateway.sendUpdateTSS(tssWallet, newTss.address);
         } catch (e: any) {
             const exitCode = e?.exitCode as number;
-            expect(exitCode).toEqual(GatewayError.InvalidSignature);
+            expect(exitCode).toEqual(gw.GatewayError.InvalidSignature);
         }
 
         // ACT 3
@@ -485,7 +477,7 @@ describe('Gateway', () => {
         expectTX(result.transactions, {
             from: undefined,
             to: gateway.address,
-            op: GatewayOp.UpdateCode,
+            op: gw.GatewayOp.UpdateCode,
         });
 
         // Try to query this new "ping" method

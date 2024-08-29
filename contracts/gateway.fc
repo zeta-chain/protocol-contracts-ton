@@ -65,7 +65,7 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
 () guard_cell_size(cell data, int max_size_bits, int throw_error) impure inline {
     int max_size_cells = (max_size_bits / 1023) + 1;
 
-    ;; note that is count(child cells) > max_size_cells, TVM will exit with code 7;
+    ;; note that if count(child cells) > max_size_cells, TVM will exit with code 7;
     (_, int data_bits, _) = compute_data_size(data, max_size_cells);
 
     if (data_bits > max_size_bits) {
@@ -116,7 +116,7 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
     ;; todo Should we remove the call_data from the log?
     ;; todo Removing it reduces gas usage by ~x2.5 (wow!)
 
-    ;; todo Should we completely remove logs use simply parse `in_msg_body`?
+    ;; todo Should we completely remove logs and simply parse `in_msg_body`?
 
     ;; Logs `$sender deposited $deposit_amount TON to $evm_recipient with $call_data`
     cell log = begin_cell()
