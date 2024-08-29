@@ -3,7 +3,7 @@
 #include "../imports/stdlib.fc";
 
 ;; Returs keccak256 hash of the data as uint256
-int hash_keccak256(builder b, int n) asm "HASHEXT_KECCAK256";
+int hash_keccak256(builder b) asm "1 INT HASHEXT_KECCAK256";
 
 ;; Recovers public key from ECDSA signature. Costs 1526 gas.
 ;;
@@ -55,7 +55,7 @@ int normalize_ecdsa_recovery_id(int v) inline {
     int pub_key_hash = begin_cell()
         .store_uint(x1, 256)
         .store_uint(x2, 256)
-        .hash_keccak256(1);
+        .hash_keccak256();
 
     slice actual_evm_address = begin_cell()
         .store_uint(pub_key_hash, 256)

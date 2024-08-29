@@ -6,6 +6,7 @@ import {
     GatewayConfig,
     GatewayError,
     GatewayOp,
+    parseDepositAndCallLog,
     parseDepositLog,
 } from '../wrappers/Gateway';
 import '@ton/test-utils';
@@ -13,6 +14,9 @@ import { compile } from '@ton/blueprint';
 import * as utils from './utils';
 import { findTransaction, FlatTransactionComparable } from '@ton/test-utils/dist/test/transaction';
 import { ethers } from 'ethers';
+import { stringToCell } from '@ton/core/dist/boc/utils/strings';
+import path from 'node:path';
+import * as fs from 'node:fs';
 
 // copied from `gas.fc`
 const gasFee = toNano('0.01');
@@ -159,6 +163,47 @@ describe('Gateway', () => {
         expect(depositLog.sender.toRawString()).toEqual(sender.address.toRawString());
         expect(depositLog.amount).toEqual(amount - gasFee);
         expect(depositLog.recipient).toEqual(evmAddress);
+    });
+
+    it('should deposit and call', async () => {
+        // ARRANGE
+        // Given a sender
+        const sender = await blockchain.treasury('sender1');
+
+        // Given zevm address
+        const recipient = '0x95222290dd7278aa3ddd389cc1e1d165cc4bafe5';
+
+        // Given quite a long call data
+        const longText = readFixture('long-call-data.txt');
+        const callData = stringToCell(longText);
+
+        // ACT
+        const amount = toNano('10');
+        const result = await gateway.sendDepositAndCall(
+            sender.getSender(),
+            amount,
+            recipient,
+            callData,
+        );
+
+        // ASSERT
+        const tx = expectTX(result.transactions, {
+            from: sender.address,
+            to: gateway.address,
+            success: true,
+        });
+
+        utils.logGasUsage(expect, tx);
+
+        // Check log
+        const log = parseDepositAndCallLog(tx.outMessages.get(0)!.body);
+
+        expect(log.op).toEqual(GatewayOp.DepositAndCall);
+        expect(log.queryId).toEqual(0);
+        expect(log.sender.toRawString()).toEqual(sender.address.toRawString());
+        expect(log.amount).toEqual(amount - gasFee);
+        expect(log.recipient).toEqual(recipient);
+        expect(log.callData).toEqual(longText);
     });
 
     it('should perform a donation', async () => {
@@ -459,14 +504,11 @@ describe('Gateway', () => {
         }
     });
 
-    // todo deposits: arbitrary long memo
-    // todo deposits: should fail w/o memo
-    // todo deposits: should fail w/ value too small
-    // todo deposits: should fail w/ invalid memo (too short)
+    // todo deposit_and_call: missing memo
+    // todo deposit_and_call: memo is too long
+    // todo deposits: should fail because the value is too small
     // todo deposits: check that gas costs are always less than 0.01 for long memos
-
-    // todo withdrawals: invalid nonce
-    // todo withdrawals: amount is more than locked
+    // todo withdrawals: amount is more than locked (should not be possible, but still worth checking)
 });
 
 export function expectTX(transactions: Transaction[], cmp: FlatTransactionComparable): Transaction {
@@ -476,4 +518,11 @@ export function expectTX(transactions: Transaction[], cmp: FlatTransactionCompar
     expect(tx).toBeDefined();
 
     return tx!;
+}
+
+function readFixture(fixturePath: string): string {
+    const filePath = path.resolve(__dirname, '../tests/fixtures/', fixturePath);
+    const buf = fs.readFileSync(filePath, 'utf-8');
+
+    return buf.toString();
 }

@@ -101,6 +101,30 @@ export class Gateway implements Contract {
         await provider.internal(via, { value, sendMode, body });
     }
 
+    async sendDepositAndCall(
+        provider: ContractProvider,
+        via: Sender,
+        value: bigint,
+        zevmRecipient: string | bigint,
+        callData: Cell,
+    ) {
+        // accept bigInt or hex string
+        if (typeof zevmRecipient === 'string') {
+            zevmRecipient = BigInt(zevmRecipient);
+        }
+
+        const body = beginCell()
+            .storeUint(GatewayOp.DepositAndCall, 32) // op code
+            .storeUint(0, 64) // query id
+            .storeUint(zevmRecipient, 160) // 20 bytes
+            .storeRef(callData)
+            .endCell();
+
+        const sendMode = SendMode.PAY_GAS_SEPARATELY;
+
+        await provider.internal(via, { value, sendMode, body });
+    }
+
     async sendDonation(provider: ContractProvider, via: Sender, value: bigint) {
         let body = beginCell()
             .storeUint(GatewayOp.Donate, 32) // op code
@@ -213,13 +237,17 @@ export class Gateway implements Contract {
     }
 }
 
-export type DepositLog = {
+export interface DepositLog {
     op: number;
     queryId: number;
     sender: Address;
     amount: bigint;
     recipient: string;
-};
+}
+
+export interface DepositAndCallLog extends DepositLog {
+    callData: string;
+}
 
 export function parseDepositLog(body: Cell): DepositLog {
     const cs = body.beginParse();
@@ -231,4 +259,17 @@ export function parseDepositLog(body: Cell): DepositLog {
     const recipient = loadHexStringFromBuffer(cs.loadBuffer(20));
 
     return { op, queryId, sender, amount, recipient };
+}
+
+export function parseDepositAndCallLog(body: Cell): DepositAndCallLog {
+    const cs = body.beginParse();
+
+    const op = cs.loadUint(32);
+    const queryId = cs.loadUint(64);
+    const sender = cs.loadAddress();
+    const amount = cs.loadCoins();
+    const recipient = loadHexStringFromBuffer(cs.loadBuffer(20));
+    const callData = cs.loadStringTail();
+
+    return { op, queryId, sender, amount, recipient, callData };
 }

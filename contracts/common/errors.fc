@@ -11,7 +11,7 @@ const error::unknown_op = 102;
 ;; Invalid EVM recipient (should be 20 bytes slice)
 const error::invalid_evm_recipient = 103;
 
-;; todo 104 is reserved;
+const error::invalid_call_data = 104;
 
 ;; We only want to support workchain 0 aka "basechain"
 const error::wrong_workchain = 105;
