@@ -20,6 +20,7 @@ export enum GatewayOp {
     Withdraw = 200,
     SetDepositsEnabled = 201,
     UpdateTSS = 202,
+    UpdateCode = 203,
 }
 
 // copied from `errors.fc`
@@ -126,6 +127,13 @@ export class Gateway implements Contract {
             .endCell();
 
         return await this.signAndSendAdminCommand(provider, signer, GatewayOp.UpdateTSS, payload);
+    }
+
+    async sendUpdateCode(provider: ContractProvider, signer: Wallet, code: Cell) {
+        const nextSeqno = await this.getNextSeqno(provider);
+        const payload = beginCell().storeRef(code).storeUint(nextSeqno, 32).endCell();
+
+        return await this.signAndSendAdminCommand(provider, signer, GatewayOp.UpdateCode, payload);
     }
 
     /**

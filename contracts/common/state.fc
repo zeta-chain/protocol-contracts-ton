@@ -19,7 +19,7 @@ global int state::seqno;
 ;; TSS address as 20 bytes (160 bits)
 global slice state::tss_address;
 
-() load_state() impure inline {
+() load_state() impure inline_ref {
     var cs = get_data().begin_parse();
 
     state::deposits_enabled = cs~load_uint(size::deposits_enabled);
@@ -31,7 +31,7 @@ global slice state::tss_address;
     state::tss_address = cs~load_bits(size::tss_address);
 }
 
-() mutate_state() impure inline {
+() mutate_state() impure inline_ref {
     var store = begin_cell()
         .store_uint(state::deposits_enabled, size::deposits_enabled)
         .store_coins(state::total_locked)

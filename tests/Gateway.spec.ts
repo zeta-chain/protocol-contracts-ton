@@ -10,15 +10,9 @@ import {
 } from '../wrappers/Gateway';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
-import {
-    evmAddressToSlice,
-    formatCoin,
-    loadHexStringFromSlice,
-    logGasUsage,
-    signCellECDSA,
-} from './utils';
+import * as utils from './utils';
 import { findTransaction, FlatTransactionComparable } from '@ton/test-utils/dist/test/transaction';
-import { ethers } from 'ethers'; // copied from `errors.fc`
+import { ethers } from 'ethers';
 
 // copied from `gas.fc`
 const gasFee = toNano('0.01');
@@ -126,7 +120,7 @@ describe('Gateway', () => {
 
         // Given memo with EVM address (20 bytes)
         const evmAddress = '0x92215391d24c75eb005eb4b7c8c55bf0036604a5';
-        const memo = evmAddressToSlice(evmAddress);
+        const memo = utils.evmAddressToSlice(evmAddress);
 
         // Given amount to deposit
         const amount = toNano('1');
@@ -142,7 +136,7 @@ describe('Gateway', () => {
             success: true,
         });
 
-        logGasUsage(expect, tx);
+        utils.logGasUsage(expect, tx);
 
         // Check gateway balance
         const gatewayBalanceAfter = await gateway.getBalance();
@@ -167,7 +161,7 @@ describe('Gateway', () => {
         expect(depositLog.amount).toEqual(amount - gasFee);
 
         // Check that memo logged properly
-        const memoAddress = loadHexStringFromSlice(depositLog.memo.asSlice(), 20);
+        const memoAddress = utils.loadHexStringFromSlice(depositLog.memo.asSlice(), 20);
 
         expect(memoAddress).toEqual(evmAddress);
     });
@@ -191,7 +185,7 @@ describe('Gateway', () => {
             success: true,
         });
 
-        logGasUsage(expect, tx);
+        utils.logGasUsage(expect, tx);
 
         // Check that valueLocked is NOT updated
         const [_, valueLocked] = await gateway.getQueryState();
@@ -216,7 +210,7 @@ describe('Gateway', () => {
         await gateway.sendDeposit(
             sender.getSender(),
             toNano('10') + gasFee,
-            evmAddressToSlice('0x95222290dd7278aa3ddd389cc1e1d165cc4bafe5'),
+            utils.evmAddressToSlice('0x95222290dd7278aa3ddd389cc1e1d165cc4bafe5'),
         );
 
         let [_, valueLocked] = await gateway.getQueryState();
@@ -235,7 +229,7 @@ describe('Gateway', () => {
             .endCell();
 
         // ... Which is signed by TSS
-        const signature = signCellECDSA(tssWallet, payload);
+        const signature = utils.signCellECDSA(tssWallet, payload);
 
         // Given an admin command to withdraw TON
         const cmd: AdminCommand = {
@@ -257,7 +251,7 @@ describe('Gateway', () => {
             value: amount,
         });
 
-        logGasUsage(expect, tx);
+        utils.logGasUsage(expect, tx);
 
         // Check that locked funds are updated
         [_, valueLocked] = await gateway.getQueryState();
@@ -273,7 +267,7 @@ describe('Gateway', () => {
         // todo there's a tiny discrepancy in the balance, need to investigate later, probably related to fwd fees.
         // expect(senderBalanceAfter).toEqual(senderBalanceBefore + amount);
         const discrepancy = amount - (senderBalanceAfter - senderBalanceBefore);
-        console.log('Discrepancy:', formatCoin(discrepancy));
+        console.log('Discrepancy:', utils.formatCoin(discrepancy));
         expect(discrepancy).toBeLessThan(toNano('0.001'));
     });
 
@@ -286,7 +280,7 @@ describe('Gateway', () => {
         await gateway.sendDeposit(
             sender.getSender(),
             toNano('10') + gasFee,
-            evmAddressToSlice(someRandomEvmWallet.address),
+            utils.evmAddressToSlice(someRandomEvmWallet.address),
         );
 
         // Given a withdrawal payload ...
@@ -299,7 +293,7 @@ describe('Gateway', () => {
             .endCell();
 
         // ... which is signed by a RANDOM EVM wallet
-        const signature = signCellECDSA(someRandomEvmWallet, payload);
+        const signature = utils.signCellECDSA(someRandomEvmWallet, payload);
 
         // Given an admin command to withdraw TON
         const cmd: AdminCommand = { op: GatewayOp.Withdraw, signature, payload };
@@ -364,7 +358,7 @@ describe('Gateway', () => {
         const result4 = await gateway.sendDeposit(
             sender.getSender(),
             toNano('1'),
-            evmAddressToSlice('0x23f4569002a5a07f0ecf688142eeb6bcd883eef8'),
+            utils.evmAddressToSlice('0x23f4569002a5a07f0ecf688142eeb6bcd883eef8'),
         );
 
         // ASSERT 4
@@ -425,6 +419,49 @@ describe('Gateway', () => {
             to: gateway.address,
             success: true,
         });
+    });
+
+    it('should update the code', async () => {
+        // ARRANGE
+        // Given some value in the Gateway
+        await gateway.sendDonation(deployer.getSender(), toNano('10'));
+
+        // Given a new code
+        const code = await utils.compileFuncInline(`
+          () recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+               return ();
+          }
+
+          (slice) ping() method_id {
+                return "pong";
+          }
+        `);
+
+        // ACT
+        // Update the code
+        const result = await gateway.sendUpdateCode(tssWallet, code);
+
+        // ASSERT
+        expectTX(result.transactions, {
+            from: undefined,
+            to: gateway.address,
+            op: GatewayOp.UpdateCode,
+        });
+
+        // Try to query this new "ping" method
+        const result2 = await blockchain.runGetMethod(gateway.address, 'ping', []);
+        const message = result2.stackReader.readString();
+        expect(message).toEqual('pong');
+
+        // Try to trigger some TSS command
+        // It should fail because external_message is not implemented anymore! :troll:
+        try {
+            const result3 = await gateway.sendEnableDeposits(tssWallet, true);
+        } catch (e: any) {
+            // https://docs.ton.org/learn/tvm-instructions/tvm-exit-codes
+            const exitCode = e?.exitCode as number;
+            expect(exitCode).toEqual(11);
+        }
     });
 
     // todo deposits: arbitrary long memo

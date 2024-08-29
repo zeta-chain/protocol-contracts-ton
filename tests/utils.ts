@@ -1,5 +1,6 @@
 import { beginCell, Cell, Slice, Transaction } from '@ton/core';
 import { Wallet } from 'ethers';
+import { compileFunc } from '@ton-community/func-js';
 
 export function evmAddressToSlice(address: string): Slice {
     if (address.length !== 42) {
@@ -72,4 +73,28 @@ export function signCellECDSA(signer: Wallet, cell: Cell, log: boolean = false):
     }
 
     return beginCell().storeUint(bigV, 8).storeUint(bigR, 256).storeUint(bigS, 256).asSlice();
+}
+
+/**
+ * Compiles the given FunC code and returns the resulting cell
+ * @see https://github.com/ton-community/func-js
+ * @param code
+ */
+export async function compileFuncInline(code: string): Promise<Cell> {
+    // We can embed 'stdlib.fc' in the future
+    const result = await compileFunc({
+        targets: ['main.fc'],
+        sources: { 'main.fc': code },
+    });
+
+    expect(result.status).toBe('ok');
+
+    // @ts-ignore
+    // Bag of Cells
+    const boc = result.codeBoc as string;
+
+    const cells = Cell.fromBoc(Buffer.from(boc, 'base64'));
+    expect(cells.length).toBe(1);
+
+    return cells[0];
 }
