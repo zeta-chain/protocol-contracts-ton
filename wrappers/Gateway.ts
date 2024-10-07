@@ -33,7 +33,8 @@ export enum GatewayError {
 
 export type GatewayConfig = {
     depositsEnabled: boolean;
-    tssAddress: string;
+    tss: string;
+    authority: Address;
 };
 
 export type AdminCommand = {
@@ -42,9 +43,16 @@ export type AdminCommand = {
     payload: Cell;
 };
 
+export type GatewayState = {
+    depositsEnabled: boolean;
+    valueLocked: bigint;
+    tss: string;
+    authority: Address;
+};
+
 // Initial state of the contract during deployment
 export function gatewayConfigToCell(config: GatewayConfig): Cell {
-    const tss = evmAddressToSlice(config.tssAddress);
+    const tss = evmAddressToSlice(config.tss);
 
     return beginCell()
         .storeUint(config.depositsEnabled ? 1 : 0, 1) // deposits_enabled
@@ -52,6 +60,7 @@ export function gatewayConfigToCell(config: GatewayConfig): Cell {
         .storeCoins(0) // fees
         .storeUint(0, 32) // seqno
         .storeSlice(tss) // tss_address
+        .storeAddress(config.authority) // authority_address
         .endCell();
 }
 
@@ -216,14 +225,20 @@ export class Gateway implements Contract {
         return state.balance;
     }
 
-    async getQueryState(provider: ContractProvider): Promise<[boolean, bigint, string]> {
+    async getGatewayState(provider: ContractProvider): Promise<GatewayState> {
         const response = await provider.get('query_state', []);
 
         const depositsEnabled = response.stack.readBoolean();
         const valueLocked = response.stack.readBigNumber();
         const tssAddress = loadHexStringFromBuffer(response.stack.readBuffer());
+        const authorityAddress = response.stack.readAddress();
 
-        return [depositsEnabled, valueLocked, tssAddress];
+        return {
+            depositsEnabled,
+            valueLocked,
+            tss: tssAddress,
+            authority: authorityAddress,
+        };
     }
 
     async getSeqno(provider: ContractProvider): Promise<number> {

@@ -8,7 +8,7 @@ import { ethers } from 'ethers';
 import { stringToCell } from '@ton/core/dist/boc/utils/strings';
 import path from 'node:path';
 import * as fs from 'node:fs';
-import * as gw from '../wrappers/Gateway';
+import * as gw from '../wrappers/Gateway'; // copied from `gas.fc`
 
 // copied from `gas.fc`
 const gasFee = toNano('0.01');
@@ -35,15 +35,15 @@ describe('Gateway', () => {
 
     beforeEach(async () => {
         blockchain = await Blockchain.create();
+        deployer = await blockchain.treasury('deployer');
 
         const deployConfig: gw.GatewayConfig = {
             depositsEnabled: true,
-            tssAddress: tssWallet.address,
+            tss: tssWallet.address,
+            authority: deployer.address,
         };
 
         gateway = blockchain.openContract(gw.Gateway.createFromConfig(deployConfig, code));
-
-        deployer = await blockchain.treasury('deployer');
 
         const deployResult = await gateway.sendDeploy(deployer.getSender(), toNano('0.05'));
 
@@ -60,11 +60,12 @@ describe('Gateway', () => {
 
         // ASSERT
         // Check that initial state is queried correctly
-        const [depositsEnabled, valueLocked, tss] = await gateway.getQueryState();
+        const state = await gateway.getGatewayState();
 
-        expect(depositsEnabled).toBe(true);
-        expect(valueLocked).toBe(0n);
-        expect(tss).toBe(tssWallet.address.toLowerCase());
+        expect(state.depositsEnabled).toBe(true);
+        expect(state.valueLocked).toBe(0n);
+        expect(state.tss).toBe(tssWallet.address.toLowerCase());
+        expect(state.authority.toRawString()).toBe(deployer.address.toRawString());
 
         // Check that seqno works and is zero
         const nonce = await gateway.getSeqno();
@@ -140,7 +141,7 @@ describe('Gateway', () => {
         expect(gatewayBalanceAfter).toBeGreaterThanOrEqual(gatewayBalanceBefore + amount - gasFee);
 
         // Check that valueLocked is updated
-        const [_, valueLocked] = await gateway.getQueryState();
+        const { valueLocked } = await gateway.getGatewayState();
 
         expect(valueLocked).toEqual(amount - gasFee);
 
@@ -220,7 +221,7 @@ describe('Gateway', () => {
         utils.logGasUsage(expect, tx);
 
         // Check that valueLocked is NOT updated
-        const [_, valueLocked] = await gateway.getQueryState();
+        const { valueLocked } = await gateway.getGatewayState();
 
         // Donation doesn't count as a deposit, so no net-new locked value.
         expect(valueLocked).toEqual(0n);
@@ -245,7 +246,7 @@ describe('Gateway', () => {
             '0x95222290dd7278aa3ddd389cc1e1d165cc4bafe5',
         );
 
-        let [_, valueLocked] = await gateway.getQueryState();
+        let { valueLocked } = await gateway.getGatewayState();
         expect(valueLocked).toEqual(toNano('10'));
 
         // Given sender balance BEFORE withdrawal
@@ -286,7 +287,9 @@ describe('Gateway', () => {
         utils.logGasUsage(expect, tx);
 
         // Check that locked funds are updated
-        [_, valueLocked] = await gateway.getQueryState();
+        const gwState = await gateway.getGatewayState();
+        valueLocked = gwState.valueLocked;
+
         expect(valueLocked).toEqual(toNano('7'));
 
         // Check nonce
@@ -360,7 +363,7 @@ describe('Gateway', () => {
         });
 
         // Check that deposits are disabled
-        const [depositsEnabled] = await gateway.getQueryState();
+        const { depositsEnabled } = await gateway.getGatewayState();
         expect(depositsEnabled).toBe(false);
 
         // ACT 2
@@ -428,7 +431,7 @@ describe('Gateway', () => {
         });
 
         // Check that tss was updated
-        const { 2: tss } = await gateway.getQueryState();
+        const { tss } = await gateway.getGatewayState();
         expect(tss).toEqual(newTss.address.toLowerCase());
 
         // ACT 2
