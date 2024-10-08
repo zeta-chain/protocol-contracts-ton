@@ -87,3 +87,12 @@ The payload for `op withdrawal (200)` is the following:
 ```
 recipient:MsgAddr amount:Coins seqno:uint32
 ```
+
+#### External message signature flow:
+
+Let’s simplify the input as `["signature", "payload_hash", "payload_data"]`:
+
+- With `sig + hash`, we can derive the signer's public key -> EVM address -> check that the message comes from TSS.
+- By having `hash + payload_data`, we can check that the payload is **exactly** the same as the one that was signed.
+- Otherwise, the sender could take any valid `sig + hash`, append an **arbitrary payload**, and execute the contract
+  on behalf of TSS (e.g. "withdraw 1000 TON to address X").
