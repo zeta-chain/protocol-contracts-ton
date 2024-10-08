@@ -30,3 +30,6 @@ const error::invalid_seqno = 109;
 
 ;; Deposits are disabled
 const error::deposits_disabled = 110;
+
+;; Authroity sender is invalid
+const error::invalid_authority = 111;

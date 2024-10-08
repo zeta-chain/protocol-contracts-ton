@@ -261,19 +261,9 @@ describe('Gateway', () => {
             .storeUint(nonce, 32)
             .endCell();
 
-        // ... Which is signed by TSS
-        const signature = utils.signCellECDSA(tssWallet, payload);
-
-        // Given an admin command to withdraw TON
-        const cmd: gw.AdminCommand = {
-            op: gw.GatewayOp.Withdraw,
-            signature,
-            payload: payload,
-        };
-
         // ACT
         // Withdraw TON to the same sender on the behalf of TSS
-        const result = await gateway.sendAdminCommand(cmd);
+        const result = await gateway.sendTSSCommand(tssWallet, gw.GatewayOp.Withdraw, payload);
 
         // ASSERT
         // Check that tx is successful and contains expected outbound internal message
@@ -327,23 +317,18 @@ describe('Gateway', () => {
             .storeUint(nonce, 32)
             .endCell();
 
-        // ... which is signed by a RANDOM EVM wallet
-        const signature = utils.signCellECDSA(someRandomEvmWallet, payload);
-
-        // Given an admin command to withdraw TON
-        const cmd: gw.AdminCommand = { op: gw.GatewayOp.Withdraw, signature, payload };
-
         // ACT & ASSERT
         // Withdraw TON and expect an error
         try {
-            const result = await gateway.sendAdminCommand(cmd);
+            // Sign with some random wallet
+            await gateway.sendTSSCommand(someRandomEvmWallet, gw.GatewayOp.Withdraw, payload);
         } catch (e: any) {
             const exitCode = e?.exitCode as number;
             expect(exitCode).toEqual(gw.GatewayError.InvalidSignature);
         }
     });
 
-    it('should exercise deposits enablement toggle', async () => {
+    it('should toggle deposits', async () => {
         // ARRANGE
         // Given a sender
         const sender = await blockchain.treasury('sender5');
@@ -353,11 +338,11 @@ describe('Gateway', () => {
 
         // ACT 1
         // Disable deposits
-        const result1 = await gateway.sendEnableDeposits(tssWallet, false);
+        const result1 = await gateway.sendEnableDeposits(deployer.getSender(), false);
 
         // ASSERT 1
         expectTX(result1.transactions, {
-            from: undefined,
+            from: deployer.address,
             to: gateway.address,
             success: true,
         });
@@ -381,9 +366,9 @@ describe('Gateway', () => {
 
         // ACT 3
         // Enable deposits back
-        const result3 = await gateway.sendEnableDeposits(tssWallet, true);
+        const result3 = await gateway.sendEnableDeposits(deployer.getSender(), true);
         expectTX(result3.transactions, {
-            from: undefined,
+            from: deployer.address,
             to: gateway.address,
             success: true,
         });
@@ -403,6 +388,18 @@ describe('Gateway', () => {
             to: gateway.address,
             success: true,
         });
+
+        // ACT 5
+        // Disable deposits, but sender IS NOT an authority
+        const result5 = await gateway.sendEnableDeposits(sender.getSender(), true);
+
+        // ASSERT  5
+        expectTX(result5.transactions, {
+            from: sender.address,
+            to: gateway.address,
+            success: false,
+            exitCode: gw.GatewayError.InvalidAuthority,
+        });
     });
 
     it('should update tss address', async () => {
@@ -420,12 +417,12 @@ describe('Gateway', () => {
 
         // ACT 1
         // Update TSS address
-        const result1 = await gateway.sendUpdateTSS(tssWallet, newTss.address);
+        const result1 = await gateway.sendUpdateTSS(deployer.getSender(), newTss.address);
 
         // ASSERT 1
         // Check that tx is successful
         expectTX(result1.transactions, {
-            from: undefined,
+            from: deployer.address,
             to: gateway.address,
             op: gw.GatewayOp.UpdateTSS,
         });
@@ -433,27 +430,6 @@ describe('Gateway', () => {
         // Check that tss was updated
         const { tss } = await gateway.getGatewayState();
         expect(tss).toEqual(newTss.address.toLowerCase());
-
-        // ACT 2
-        // Do the same operation
-        // Obviously, it should fail, because the TSS was already updated
-        try {
-            await gateway.sendUpdateTSS(tssWallet, newTss.address);
-        } catch (e: any) {
-            const exitCode = e?.exitCode as number;
-            expect(exitCode).toEqual(gw.GatewayError.InvalidSignature);
-        }
-
-        // ACT 3
-        // Now let's try to invoke an admin command with the new TSS
-        const result3 = await gateway.sendEnableDeposits(newTss, true);
-
-        // ASSERT 3
-        expectTX(result3.transactions, {
-            from: undefined,
-            to: gateway.address,
-            success: true,
-        });
     });
 
     it('should update the code', async () => {
@@ -474,11 +450,11 @@ describe('Gateway', () => {
 
         // ACT
         // Update the code
-        const result = await gateway.sendUpdateCode(tssWallet, code);
+        const result = await gateway.sendUpdateCode(deployer.getSender(), code);
 
         // ASSERT
         expectTX(result.transactions, {
-            from: undefined,
+            from: deployer.address,
             to: gateway.address,
             op: gw.GatewayOp.UpdateCode,
         });
@@ -491,7 +467,7 @@ describe('Gateway', () => {
         // Try to trigger some TSS command
         // It should fail because external_message is not implemented anymore! :troll:
         try {
-            await gateway.sendEnableDeposits(tssWallet, true);
+            await gateway.sendEnableDeposits(deployer.getSender(), true);
         } catch (e: any) {
             // https://docs.ton.org/learn/tvm-instructions/tvm-exit-codes
             const exitCode = e?.exitCode as number;

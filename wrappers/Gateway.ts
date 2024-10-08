@@ -7,7 +7,7 @@ import {
     ContractProvider,
     Sender,
     SendMode,
-    Slice,
+    toNano,
 } from '@ton/core';
 import { evmAddressToSlice, loadHexStringFromBuffer, signCellECDSA } from '../tests/utils';
 import { Wallet } from 'ethers'; // copied from `gateway.fc`
@@ -29,18 +29,13 @@ export enum GatewayError {
     NoIntent = 101,
     InvalidSignature = 108,
     DepositsDisabled = 110,
+    InvalidAuthority = 111,
 }
 
 export type GatewayConfig = {
     depositsEnabled: boolean;
     tss: string;
     authority: Address;
-};
-
-export type AdminCommand = {
-    op: number;
-    signature: Slice;
-    payload: Cell;
 };
 
 export type GatewayState = {
@@ -147,73 +142,68 @@ export class Gateway implements Contract {
         });
     }
 
-    async sendEnableDeposits(provider: ContractProvider, signer: Wallet, enabled: boolean) {
-        const nextSeqno = await this.getNextSeqno(provider);
-        const payload = beginCell().storeBit(enabled).storeUint(nextSeqno, 32).endCell();
-
-        return await this.signAndSendAdminCommand(
-            provider,
-            signer,
-            GatewayOp.SetDepositsEnabled,
-            payload,
-        );
-    }
-
-    async sendUpdateTSS(provider: ContractProvider, signer: Wallet, newTSS: string) {
-        const nextSeqno = await this.getNextSeqno(provider);
-        const payload = beginCell()
-            .storeSlice(evmAddressToSlice(newTSS))
-            .storeUint(nextSeqno, 32)
+    async sendEnableDeposits(provider: ContractProvider, via: Sender, enabled: boolean) {
+        const body = beginCell()
+            .storeUint(GatewayOp.SetDepositsEnabled, 32) // op code
+            .storeUint(0, 64) // query id
+            .storeBit(enabled)
             .endCell();
 
-        return await this.signAndSendAdminCommand(provider, signer, GatewayOp.UpdateTSS, payload);
+        await this.sendAuthorityCommand(provider, via, body);
     }
 
-    async sendUpdateCode(provider: ContractProvider, signer: Wallet, code: Cell) {
-        const nextSeqno = await this.getNextSeqno(provider);
-        const payload = beginCell().storeRef(code).storeUint(nextSeqno, 32).endCell();
+    async sendUpdateTSS(provider: ContractProvider, via: Sender, newTSS: string) {
+        const body = beginCell()
+            .storeUint(GatewayOp.UpdateTSS, 32) // op code
+            .storeUint(0, 64) // query id
+            .storeSlice(evmAddressToSlice(newTSS))
+            .endCell();
 
-        return await this.signAndSendAdminCommand(provider, signer, GatewayOp.UpdateCode, payload);
+        await this.sendAuthorityCommand(provider, via, body);
+    }
+
+    async sendUpdateCode(provider: ContractProvider, via: Sender, code: Cell) {
+        const body = beginCell()
+            .storeUint(GatewayOp.UpdateCode, 32) // op code
+            .storeUint(0, 64) // query id
+            .storeRef(code)
+            .endCell();
+
+        await this.sendAuthorityCommand(provider, via, body);
+    }
+
+    async sendAuthorityCommand(provider: ContractProvider, via: Sender, body: Cell) {
+        await provider.internal(via, {
+            value: toNano('0.01'),
+            sendMode: SendMode.PAY_GAS_SEPARATELY,
+            body,
+        });
     }
 
     /**
-     * Sign external message using ECDSA private key and send it to the contract
+     * Sign external message using ECDSA private TSS key and send it to the contract
      *
      * @param provider
      * @param signer
      * @param op
      * @param payload
      */
-    async signAndSendAdminCommand(
-        provider: ContractProvider,
-        signer: Wallet,
-        op: number,
-        payload: Cell,
-    ) {
+    async sendTSSCommand(provider: ContractProvider, signer: Wallet, op: number, payload: Cell) {
         const signature = signCellECDSA(signer, payload);
 
-        return await this.sendAdminCommand(provider, { op, payload, signature });
-    }
-
-    /**
-     * Send an admin command to the contract as an external message
-     * @param provider
-     * @param cmd
-     */
-    async sendAdminCommand(provider: ContractProvider, cmd: AdminCommand) {
         // SHA-256
-        const hash = cmd.payload.hash();
+        const hash = payload.hash();
         if (hash.byteLength != 32) {
             throw new Error(`Invalid hash length (got ${hash.byteLength}, want 32)`);
         }
 
         const message = beginCell()
-            .storeUint(cmd.op, 32)
-            .storeBits(cmd.signature.loadBits(8)) // v
-            .storeBits(cmd.signature.loadBits(256)) // r
-            .storeBits(cmd.signature.loadBits(256)) // s
+            .storeUint(op, 32)
+            .storeBits(signature.loadBits(8)) // v
+            .storeBits(signature.loadBits(256)) // r
+            .storeBits(signature.loadBits(256)) // s
             .storeBuffer(hash)
-            .storeRef(cmd.payload)
+            .storeRef(payload)
             .endCell();
 
         await provider.external(message);
