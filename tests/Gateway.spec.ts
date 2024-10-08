@@ -5,10 +5,10 @@ import { compile } from '@ton/blueprint';
 import * as utils from './utils';
 import { findTransaction, FlatTransactionComparable } from '@ton/test-utils/dist/test/transaction';
 import { ethers } from 'ethers';
-import { stringToCell } from '@ton/core/dist/boc/utils/strings';
+import { readString, stringToCell } from '@ton/core/dist/boc/utils/strings';
 import path from 'node:path';
 import * as fs from 'node:fs';
-import * as gw from '../wrappers/Gateway'; // copied from `gas.fc`
+import * as gw from '../wrappers/Gateway';
 
 // copied from `gas.fc`
 const gasFee = toNano('0.01');
@@ -149,13 +149,10 @@ describe('Gateway', () => {
         expect(tx.outMessagesCount).toEqual(1);
 
         // Check for data in the log message
-        const depositLog = gw.parseDepositLog(tx.outMessages.get(0)!.body);
+        const log = gw.parseDepositLog(tx.outMessages.get(0)!.body);
 
-        expect(depositLog.op).toEqual(gw.GatewayOp.Deposit);
-        expect(depositLog.queryId).toEqual(0);
-        expect(depositLog.sender.toRawString()).toEqual(sender.address.toRawString());
-        expect(depositLog.amount).toEqual(amount - gasFee);
-        expect(depositLog.recipient).toEqual(evmAddress);
+        expect(log.amount).toEqual(amount - gasFee);
+        expect(log.depositFee).toEqual(toNano('0.01'));
     });
 
     it('should deposit and call', async () => {
@@ -189,14 +186,19 @@ describe('Gateway', () => {
         utils.logGasUsage(expect, tx);
 
         // Check log
-        const log = gw.parseDepositAndCallLog(tx.outMessages.get(0)!.body);
+        const log = gw.parseDepositLog(tx.outMessages.get(0)!.body);
 
-        expect(log.op).toEqual(gw.GatewayOp.DepositAndCall);
-        expect(log.queryId).toEqual(0);
-        expect(log.sender.toRawString()).toEqual(sender.address.toRawString());
         expect(log.amount).toEqual(amount - gasFee);
-        expect(log.recipient).toEqual(recipient);
-        expect(log.callData).toEqual(longText);
+        expect(log.depositFee).toEqual(toNano('0.01'));
+
+        // Parse call data from the internal message
+        const body = tx.inMessage!.body.beginParse();
+
+        // skip op + query_id + evm address
+        const callDataCell = body.skip(64 + 32 + 160).loadRef();
+
+        const callDataRestored = readString(callDataCell.asSlice());
+        expect(callDataRestored).toEqual(longText);
     });
 
     it('should perform a donation', async () => {

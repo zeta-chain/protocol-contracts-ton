@@ -96,13 +96,11 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
 
     mutate_state();
 
-    ;; Logs `$sender deposited $deposit_amount TON to $evm_recipient`
+    ;; Logs `$deposited, $depositFee`.
+    ;; The rest we can parse from inbound message on the observer side
     cell log = begin_cell()
-        .store_uint(op::internal::deposit, size::op_code_size)
-        .store_uint(0, size::query_id_size)
-        .store_slice(sender)
         .store_coins(deposit_amount)
-        .store_uint(evm_recipient, size::evm_address)
+        .store_coins(deposit_gas_fee)
         .end_cell();
 
     send_log_message(log);
@@ -120,19 +118,11 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
 
     mutate_state();
 
-    ;; todo Should we remove the call_data from the log?
-    ;; todo Removing it reduces gas usage by ~x2.5 (wow!)
-
-    ;; todo Should we completely remove logs and simply parse `in_msg_body`?
-
-    ;; Logs `$sender deposited $deposit_amount TON to $evm_recipient with $call_data`
+    ;; Logs `$deposited, $depositFee`.
+    ;; The rest we can parse from inbound message on the observer side
     cell log = begin_cell()
-        .store_uint(op::internal::deposit_and_call, size::op_code_size)
-        .store_uint(0, size::query_id_size)
-        .store_slice(sender)
         .store_coins(deposit_amount)
-        .store_uint(evm_recipient, size::evm_address)
-        .store_ref(call_data)
+        .store_coins(deposit_gas_fee)
         .end_cell();
 
     send_log_message(log);

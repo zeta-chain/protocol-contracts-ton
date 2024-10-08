@@ -237,40 +237,17 @@ export class Gateway implements Contract {
 }
 
 export interface DepositLog {
-    op: number;
-    queryId: number;
-    sender: Address;
     amount: bigint;
-    recipient: string;
-}
-
-export interface DepositAndCallLog extends DepositLog {
-    callData: string;
+    depositFee: bigint;
 }
 
 export function parseDepositLog(body: Cell): DepositLog {
     const cs = body.beginParse();
 
-    const op = cs.loadUint(32);
-    const queryId = cs.loadUint(64);
-    const sender = cs.loadAddress();
     const amount = cs.loadCoins();
-    const recipient = loadHexStringFromBuffer(cs.loadBuffer(20));
+    const depositFee = cs.loadCoins();
 
-    return { op, queryId, sender, amount, recipient };
-}
-
-export function parseDepositAndCallLog(body: Cell): DepositAndCallLog {
-    const cs = body.beginParse();
-
-    const op = cs.loadUint(32);
-    const queryId = cs.loadUint(64);
-    const sender = cs.loadAddress();
-    const amount = cs.loadCoins();
-    const recipient = loadHexStringFromBuffer(cs.loadBuffer(20));
-    const callData = cs.loadStringTail();
-
-    return { op, queryId, sender, amount, recipient, callData };
+    return { amount, depositFee };
 }
 
 function newIntent(op: GatewayOp): Builder {
