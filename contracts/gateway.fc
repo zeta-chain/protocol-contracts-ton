@@ -23,6 +23,7 @@ const op::external::withdraw = 200;
 const op::authority::set_deposits_enabled = 201;
 const op::authority::update_tss = 202;
 const op::authority::update_code = 203;
+const op::authority::update_authority = 204;
 
 ;; GAS FEE =========================================
 ;; Let's use const for now and refine this later
@@ -180,6 +181,22 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
     mutate_state();
 }
 
+() handle_update_authority(slice sender, slice message) impure inline {
+    load_state();
+
+    guard_authority_sender(sender);
+
+    slice new_authority = message~load_msg_addr();
+
+    ;; Validate the workchain & address
+    (int wc, int addr) = parse_std_addr(new_authority);
+    throw_unless(error::wrong_workchain, wc == 0);
+
+    state::authority_address = new_authority;
+
+    mutate_state();
+}
+
 ;; Input for all internal messages
 () recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
     (int flags, slice sender, _) = in_msg_full.parse_flags_and_sender();
@@ -240,7 +257,9 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
         return handle_update_code(sender, in_msg_body);
     }
 
-    ;; todo update authority?? (check how it's made in SOL contract)
+    if (op == op::authority::update_authority) {
+        return handle_update_authority(sender, in_msg_body);
+    }
 
     throw(error::unknown_op);
 }

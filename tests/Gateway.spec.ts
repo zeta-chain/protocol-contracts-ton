@@ -475,6 +475,53 @@ describe('Gateway', () => {
         }
     });
 
+    it('should update authority', async () => {
+        // ARRANGE
+        // Given some value in the Gateway
+        await gateway.sendDonation(deployer.getSender(), toNano('10'));
+
+        // Given a new authority
+        const newAuth = await blockchain.treasury('newAuth');
+
+        // ACT 1
+        // Update authority
+        const result1 = await gateway.sendUpdateAuthority(deployer.getSender(), newAuth.address);
+
+        // ASSERT 1
+        expectTX(result1.transactions, {
+            from: deployer.address,
+            to: gateway.address,
+            op: gw.GatewayOp.UpdateAuthority,
+        });
+
+        const state = await gateway.getGatewayState();
+        expect(state.authority.toRawString()).toEqual(newAuth.address.toRawString());
+
+        // ACT 2
+        // Try to disable deposits with the new authority
+        const result2 = await gateway.sendEnableDeposits(newAuth.getSender(), false);
+
+        // ASSERT 2
+        expectTX(result2.transactions, {
+            from: newAuth.address,
+            to: gateway.address,
+            op: gw.GatewayOp.SetDepositsEnabled,
+            success: true,
+        });
+
+        // ACT 3
+        // And do the same for old authority and fail
+        const result3 = await gateway.sendEnableDeposits(deployer.getSender(), false);
+
+        // ASSERT 3
+        expectTX(result3.transactions, {
+            from: deployer.address,
+            to: gateway.address,
+            exitCode: gw.GatewayError.InvalidAuthority,
+            success: false,
+        });
+    });
+
     // todo deposit_and_call: missing memo
     // todo deposit_and_call: memo is too long
     // todo deposits: should fail because the value is too small

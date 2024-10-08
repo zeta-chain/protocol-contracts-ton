@@ -1,6 +1,7 @@
 import {
     Address,
     beginCell,
+    Builder,
     Cell,
     Contract,
     contractAddress,
@@ -22,6 +23,7 @@ export enum GatewayOp {
     SetDepositsEnabled = 201,
     UpdateTSS = 202,
     UpdateCode = 203,
+    UpdateAuthority = 204,
 }
 
 // copied from `errors.fc`
@@ -117,9 +119,7 @@ export class Gateway implements Contract {
             zevmRecipient = BigInt(zevmRecipient);
         }
 
-        const body = beginCell()
-            .storeUint(GatewayOp.DepositAndCall, 32) // op code
-            .storeUint(0, 64) // query id
+        const body = newIntent(GatewayOp.DepositAndCall)
             .storeUint(zevmRecipient, 160) // 20 bytes
             .storeRef(callData)
             .endCell();
@@ -143,31 +143,25 @@ export class Gateway implements Contract {
     }
 
     async sendEnableDeposits(provider: ContractProvider, via: Sender, enabled: boolean) {
-        const body = beginCell()
-            .storeUint(GatewayOp.SetDepositsEnabled, 32) // op code
-            .storeUint(0, 64) // query id
-            .storeBit(enabled)
-            .endCell();
+        const body = newIntent(GatewayOp.SetDepositsEnabled).storeBit(enabled).endCell();
 
         await this.sendAuthorityCommand(provider, via, body);
     }
 
     async sendUpdateTSS(provider: ContractProvider, via: Sender, newTSS: string) {
-        const body = beginCell()
-            .storeUint(GatewayOp.UpdateTSS, 32) // op code
-            .storeUint(0, 64) // query id
-            .storeSlice(evmAddressToSlice(newTSS))
-            .endCell();
+        const body = newIntent(GatewayOp.UpdateTSS).storeSlice(evmAddressToSlice(newTSS)).endCell();
 
         await this.sendAuthorityCommand(provider, via, body);
     }
 
     async sendUpdateCode(provider: ContractProvider, via: Sender, code: Cell) {
-        const body = beginCell()
-            .storeUint(GatewayOp.UpdateCode, 32) // op code
-            .storeUint(0, 64) // query id
-            .storeRef(code)
-            .endCell();
+        const body = newIntent(GatewayOp.UpdateCode).storeRef(code).endCell();
+
+        await this.sendAuthorityCommand(provider, via, body);
+    }
+
+    async sendUpdateAuthority(provider: ContractProvider, via: Sender, authority: Address) {
+        const body = newIntent(GatewayOp.UpdateAuthority).storeAddress(authority).endCell();
 
         await this.sendAuthorityCommand(provider, via, body);
     }
@@ -277,4 +271,9 @@ export function parseDepositAndCallLog(body: Cell): DepositAndCallLog {
     const callData = cs.loadStringTail();
 
     return { op, queryId, sender, amount, recipient, callData };
+}
+
+function newIntent(op: GatewayOp): Builder {
+    // op code, query id
+    return beginCell().storeUint(op, 32).storeUint(0, 64);
 }
