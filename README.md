@@ -23,10 +23,67 @@ The project is built using [Blueprint](https://github.com/ton-org/blueprint).
 
 ## How to use
 
+- Contract compilation: `make compile`
 - Contract tests: `make test`
 - Contract scripts: `make run`
-- Contract compilation: `make compile`
 
 ## How it works
 
-`TBD`
+### Deposits
+
+All deposits are represented as internal messages that have the following structure:
+
+- uint32 `op_code` - operation code. Standard for TON
+- uint64 `query_id` - not used right now. Standard for TON
+- ... the rest of the message is the operation-specific data
+
+#### `deposit` (op 101)
+
+```
+op_code:uint32 query_id:uint64 evm_recipient:slice (160 bits)
+```
+
+Deposits funds to the contract (subtracting a small deposit fee to cover the gas costs).
+ZetaChain will observe this tx and execute cross-chain deposit to `evm_recipient` on Zeta.
+
+#### `deposit_and_call` (op 102)
+
+```
+op_code:uint32 query_id:uint64 evm_recipient:slice (160 bits) call_data:cell
+```
+
+Deposits funds to the contract (subtracting a small deposit fee to cover the gas costs).
+ZetaChain will observe this tx and execute cross-chain deposit to `evm_recipient` on Zeta
+AND call the contract with `call_data`.
+
+Note that `call_data` should be
+encoded as [snakeCell](https://docs.ton.org/develop/dapps/asset-processing/metadata#snake-data-encoding)
+
+#### Authority operations
+
+- `set_deposits_enabled` - toggle deposits
+- `update_tss` - update TSS public key
+- `update_code` - upgrade the contract code
+- `update_authority` - update authority TON address
+
+### Withdrawals
+
+ZetaChain uses MPC to sign all outbound transactions using TSS (Threshold Signature Scheme).
+Due to the technical implementation TSS uses ECDSA cryptography in opposite to EdDSA in TON. Thus, we need to
+check ECDSA signatures in the contract on-chain.
+
+All TSS commands are represented as external messages that have the following structure:
+
+- `uint32 op_code` - operation code. Standard for TON
+- `[65]byte signature` - ECDSA signature of the message hash (v, r, s)
+- `[32]byte hash` - hash of the payload
+- `ref cell payload` - the actual payload
+
+By having this structure we can sign arbitrary messages using ECDSA, recover signature,
+then ensure sender and proceed with the operation.
+
+The payload for `op withdrawal (200)` is the following:
+
+```
+recipient:MsgAddr amount:Coins seqno:uint32
+```
