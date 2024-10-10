@@ -1,13 +1,14 @@
 import {
     Address,
     beginCell,
+    Builder,
     Cell,
     Contract,
     contractAddress,
     ContractProvider,
     Sender,
     SendMode,
-    Slice,
+    toNano,
 } from '@ton/core';
 import { evmAddressToSlice, loadHexStringFromBuffer, signCellECDSA } from '../tests/utils';
 import { Wallet } from 'ethers'; // copied from `gateway.fc`
@@ -22,6 +23,7 @@ export enum GatewayOp {
     SetDepositsEnabled = 201,
     UpdateTSS = 202,
     UpdateCode = 203,
+    UpdateAuthority = 204,
 }
 
 // copied from `errors.fc`
@@ -29,22 +31,25 @@ export enum GatewayError {
     NoIntent = 101,
     InvalidSignature = 108,
     DepositsDisabled = 110,
+    InvalidAuthority = 111,
 }
 
 export type GatewayConfig = {
     depositsEnabled: boolean;
-    tssAddress: string;
+    tss: string;
+    authority: Address;
 };
 
-export type AdminCommand = {
-    op: number;
-    signature: Slice;
-    payload: Cell;
+export type GatewayState = {
+    depositsEnabled: boolean;
+    valueLocked: bigint;
+    tss: string;
+    authority: Address;
 };
 
 // Initial state of the contract during deployment
 export function gatewayConfigToCell(config: GatewayConfig): Cell {
-    const tss = evmAddressToSlice(config.tssAddress);
+    const tss = evmAddressToSlice(config.tss);
 
     return beginCell()
         .storeUint(config.depositsEnabled ? 1 : 0, 1) // deposits_enabled
@@ -52,6 +57,7 @@ export function gatewayConfigToCell(config: GatewayConfig): Cell {
         .storeCoins(0) // fees
         .storeUint(0, 32) // seqno
         .storeSlice(tss) // tss_address
+        .storeAddress(config.authority) // authority_address
         .endCell();
 }
 
@@ -113,9 +119,7 @@ export class Gateway implements Contract {
             zevmRecipient = BigInt(zevmRecipient);
         }
 
-        const body = beginCell()
-            .storeUint(GatewayOp.DepositAndCall, 32) // op code
-            .storeUint(0, 64) // query id
+        const body = newIntent(GatewayOp.DepositAndCall)
             .storeUint(zevmRecipient, 160) // 20 bytes
             .storeRef(callData)
             .endCell();
@@ -138,73 +142,62 @@ export class Gateway implements Contract {
         });
     }
 
-    async sendEnableDeposits(provider: ContractProvider, signer: Wallet, enabled: boolean) {
-        const nextSeqno = await this.getNextSeqno(provider);
-        const payload = beginCell().storeBit(enabled).storeUint(nextSeqno, 32).endCell();
+    async sendEnableDeposits(provider: ContractProvider, via: Sender, enabled: boolean) {
+        const body = newIntent(GatewayOp.SetDepositsEnabled).storeBit(enabled).endCell();
 
-        return await this.signAndSendAdminCommand(
-            provider,
-            signer,
-            GatewayOp.SetDepositsEnabled,
-            payload,
-        );
+        await this.sendAuthorityCommand(provider, via, body);
     }
 
-    async sendUpdateTSS(provider: ContractProvider, signer: Wallet, newTSS: string) {
-        const nextSeqno = await this.getNextSeqno(provider);
-        const payload = beginCell()
-            .storeSlice(evmAddressToSlice(newTSS))
-            .storeUint(nextSeqno, 32)
-            .endCell();
+    async sendUpdateTSS(provider: ContractProvider, via: Sender, newTSS: string) {
+        const body = newIntent(GatewayOp.UpdateTSS).storeSlice(evmAddressToSlice(newTSS)).endCell();
 
-        return await this.signAndSendAdminCommand(provider, signer, GatewayOp.UpdateTSS, payload);
+        await this.sendAuthorityCommand(provider, via, body);
     }
 
-    async sendUpdateCode(provider: ContractProvider, signer: Wallet, code: Cell) {
-        const nextSeqno = await this.getNextSeqno(provider);
-        const payload = beginCell().storeRef(code).storeUint(nextSeqno, 32).endCell();
+    async sendUpdateCode(provider: ContractProvider, via: Sender, code: Cell) {
+        const body = newIntent(GatewayOp.UpdateCode).storeRef(code).endCell();
 
-        return await this.signAndSendAdminCommand(provider, signer, GatewayOp.UpdateCode, payload);
+        await this.sendAuthorityCommand(provider, via, body);
+    }
+
+    async sendUpdateAuthority(provider: ContractProvider, via: Sender, authority: Address) {
+        const body = newIntent(GatewayOp.UpdateAuthority).storeAddress(authority).endCell();
+
+        await this.sendAuthorityCommand(provider, via, body);
+    }
+
+    async sendAuthorityCommand(provider: ContractProvider, via: Sender, body: Cell) {
+        await provider.internal(via, {
+            value: toNano('0.01'),
+            sendMode: SendMode.PAY_GAS_SEPARATELY,
+            body,
+        });
     }
 
     /**
-     * Sign external message using ECDSA private key and send it to the contract
+     * Sign external message using ECDSA private TSS key and send it to the contract
      *
      * @param provider
      * @param signer
      * @param op
      * @param payload
      */
-    async signAndSendAdminCommand(
-        provider: ContractProvider,
-        signer: Wallet,
-        op: number,
-        payload: Cell,
-    ) {
+    async sendTSSCommand(provider: ContractProvider, signer: Wallet, op: number, payload: Cell) {
         const signature = signCellECDSA(signer, payload);
 
-        return await this.sendAdminCommand(provider, { op, payload, signature });
-    }
-
-    /**
-     * Send an admin command to the contract as an external message
-     * @param provider
-     * @param cmd
-     */
-    async sendAdminCommand(provider: ContractProvider, cmd: AdminCommand) {
         // SHA-256
-        const hash = cmd.payload.hash();
+        const hash = payload.hash();
         if (hash.byteLength != 32) {
             throw new Error(`Invalid hash length (got ${hash.byteLength}, want 32)`);
         }
 
         const message = beginCell()
-            .storeUint(cmd.op, 32)
-            .storeBits(cmd.signature.loadBits(8)) // v
-            .storeBits(cmd.signature.loadBits(256)) // r
-            .storeBits(cmd.signature.loadBits(256)) // s
+            .storeUint(op, 32)
+            .storeBits(signature.loadBits(8)) // v
+            .storeBits(signature.loadBits(256)) // r
+            .storeBits(signature.loadBits(256)) // s
             .storeBuffer(hash)
-            .storeRef(cmd.payload)
+            .storeRef(payload)
             .endCell();
 
         await provider.external(message);
@@ -216,14 +209,20 @@ export class Gateway implements Contract {
         return state.balance;
     }
 
-    async getQueryState(provider: ContractProvider): Promise<[boolean, bigint, string]> {
+    async getGatewayState(provider: ContractProvider): Promise<GatewayState> {
         const response = await provider.get('query_state', []);
 
         const depositsEnabled = response.stack.readBoolean();
         const valueLocked = response.stack.readBigNumber();
         const tssAddress = loadHexStringFromBuffer(response.stack.readBuffer());
+        const authorityAddress = response.stack.readAddress();
 
-        return [depositsEnabled, valueLocked, tssAddress];
+        return {
+            depositsEnabled,
+            valueLocked,
+            tss: tssAddress,
+            authority: authorityAddress,
+        };
     }
 
     async getSeqno(provider: ContractProvider): Promise<number> {
@@ -238,38 +237,20 @@ export class Gateway implements Contract {
 }
 
 export interface DepositLog {
-    op: number;
-    queryId: number;
-    sender: Address;
     amount: bigint;
-    recipient: string;
-}
-
-export interface DepositAndCallLog extends DepositLog {
-    callData: string;
+    depositFee: bigint;
 }
 
 export function parseDepositLog(body: Cell): DepositLog {
     const cs = body.beginParse();
 
-    const op = cs.loadUint(32);
-    const queryId = cs.loadUint(64);
-    const sender = cs.loadAddress();
     const amount = cs.loadCoins();
-    const recipient = loadHexStringFromBuffer(cs.loadBuffer(20));
+    const depositFee = cs.loadCoins();
 
-    return { op, queryId, sender, amount, recipient };
+    return { amount, depositFee };
 }
 
-export function parseDepositAndCallLog(body: Cell): DepositAndCallLog {
-    const cs = body.beginParse();
-
-    const op = cs.loadUint(32);
-    const queryId = cs.loadUint(64);
-    const sender = cs.loadAddress();
-    const amount = cs.loadCoins();
-    const recipient = loadHexStringFromBuffer(cs.loadBuffer(20));
-    const callData = cs.loadStringTail();
-
-    return { op, queryId, sender, amount, recipient, callData };
+function newIntent(op: GatewayOp): Builder {
+    // op code, query id
+    return beginCell().storeUint(op, 32).storeUint(0, 64);
 }

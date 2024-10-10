@@ -19,9 +19,11 @@ const op::internal::deposit = 101;
 const op::internal::deposit_and_call = 102;
 
 const op::external::withdraw = 200;
-const op::external::set_deposits_enabled = 201;
-const op::external::update_tss = 202;
-const op::external::update_code = 203;
+
+const op::authority::set_deposits_enabled = 201;
+const op::authority::update_tss = 202;
+const op::authority::update_code = 203;
+const op::authority::update_authority = 204;
 
 ;; GAS FEE =========================================
 ;; Let's use const for now and refine this later
@@ -61,6 +63,11 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
     throw_if(error::deposits_disabled, state::deposits_enabled == 0);
 }
 
+;; Checks that sender is the authority
+() guard_authority_sender(slice sender) impure inline_ref {
+    throw_unless(error::invalid_authority, equal_slices(sender, state::authority_address));
+}
+
 ;; Protects gas usage against huge payloads
 () guard_cell_size(cell data, int max_size_bits, int throw_error) impure inline {
     int max_size_cells = (max_size_bits / 1023) + 1;
@@ -89,13 +96,11 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
 
     mutate_state();
 
-    ;; Logs `$sender deposited $deposit_amount TON to $evm_recipient`
+    ;; Logs `$deposited, $depositFee`.
+    ;; The rest we can parse from inbound message on the observer side
     cell log = begin_cell()
-        .store_uint(op::internal::deposit, size::op_code_size)
-        .store_uint(0, size::query_id_size)
-        .store_slice(sender)
         .store_coins(deposit_amount)
-        .store_uint(evm_recipient, size::evm_address)
+        .store_coins(deposit_gas_fee)
         .end_cell();
 
     send_log_message(log);
@@ -113,22 +118,68 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
 
     mutate_state();
 
-    ;; todo Should we remove the call_data from the log?
-    ;; todo Removing it reduces gas usage by ~x2.5 (wow!)
-
-    ;; todo Should we completely remove logs and simply parse `in_msg_body`?
-
-    ;; Logs `$sender deposited $deposit_amount TON to $evm_recipient with $call_data`
+    ;; Logs `$deposited, $depositFee`.
+    ;; The rest we can parse from inbound message on the observer side
     cell log = begin_cell()
-        .store_uint(op::internal::deposit_and_call, size::op_code_size)
-        .store_uint(0, size::query_id_size)
-        .store_slice(sender)
         .store_coins(deposit_amount)
-        .store_uint(evm_recipient, size::evm_address)
-        .store_ref(call_data)
+        .store_coins(deposit_gas_fee)
         .end_cell();
 
     send_log_message(log);
+}
+
+;; Enables or disables deposits.
+() handle_set_deposits_enabled(slice sender, slice message) impure inline {
+    load_state();
+
+    guard_authority_sender(sender);
+
+    state::deposits_enabled = message~load_uint(1);
+
+    mutate_state();
+}
+
+;; Updates the TSS address. WARNING! Execute with extra caution.
+;; Wrong TSS address leads to loss of funds.
+() handle_update_tss(slice sender, slice message) impure inline {
+    load_state();
+
+    guard_authority_sender(sender);
+
+    state::tss_address = message~load_bits(size::evm_address);
+
+    mutate_state();
+}
+
+;; Updated the code of the contract
+;; handle_code_update (cell new_code)
+() handle_update_code(slice sender, slice message) impure inline {
+    load_state();
+
+    guard_authority_sender(sender);
+
+    cell new_code = message~load_ref();
+
+    ;; note that the code will be updated only after the current tx is finished
+    set_code(new_code);
+
+    mutate_state();
+}
+
+() handle_update_authority(slice sender, slice message) impure inline {
+    load_state();
+
+    guard_authority_sender(sender);
+
+    slice new_authority = message~load_msg_addr();
+
+    ;; Validate the workchain & address
+    (int wc, int addr) = parse_std_addr(new_authority);
+    throw_unless(error::wrong_workchain, wc == 0);
+
+    state::authority_address = new_authority;
+
+    mutate_state();
 }
 
 ;; Input for all internal messages
@@ -157,8 +208,9 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
         return ();
     }
 
+    throw_if(error::insufficient_value, msg_value < deposit_gas_fee);
+
     if (op == op::internal::deposit) {
-        throw_if(error::insufficient_value, msg_value < deposit_gas_fee);
         throw_if(error::invalid_evm_recipient, in_msg_body.slice_bits() < size::evm_address);
 
         int evm_recipient = in_msg_body~load_uint(size::evm_address);
@@ -167,7 +219,6 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
     }
 
     if (op == op::internal::deposit_and_call) {
-        throw_if(error::insufficient_value, msg_value < deposit_gas_fee);
         throw_if(error::invalid_evm_recipient, in_msg_body.slice_bits() < size::evm_address);
 
         int evm_recipient = in_msg_body~load_uint(size::evm_address);
@@ -177,6 +228,25 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
         cell call_data = in_msg_body~load_ref();
 
         return handle_deposit_and_call(sender, msg_value, evm_recipient, call_data);
+    }
+
+    ;; TODO set authority tx fee
+    ;; https://github.com/zeta-chain/protocol-contracts-ton/issues/9
+
+    if (op == op::authority::set_deposits_enabled) {
+        return handle_set_deposits_enabled(sender, in_msg_body);
+    }
+
+    if (op == op::authority::update_tss) {
+        return handle_update_tss(sender, in_msg_body);
+    }
+
+    if (op == op::authority::update_code) {
+        return handle_update_code(sender, in_msg_body);
+    }
+
+    if (op == op::authority::update_authority) {
+        return handle_update_authority(sender, in_msg_body);
     }
 
     throw(error::unknown_op);
@@ -238,73 +308,6 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
     mutate_state();
 }
 
-;; Enables or disables deposits
-;;
-;; handle_enable_deposits (int enabled, int seqno)
-() handle_set_deposits_enabled(slice message) impure inline {
-    load_state();
-
-    slice payload = authenticate_external_message(message).begin_parse();
-
-    int enabled = payload~load_uint(1);
-    int seqno = payload~load_uint(size::seqno);
-
-    throw_if(error::invalid_seqno, seqno != (state::seqno + 1));
-
-    accept_message();
-
-    state::deposits_enabled = enabled;
-    state::seqno += 1;
-
-    mutate_state();
-}
-
-;; Updates the TSS address. WARNING! Execute with extra caution.
-;; Wrong TSS address leads to funds loss.
-;;
-;; handle_update_tss (slice tss_address, int32 seqno)
-() handle_update_tss(slice message) impure inline {
-    load_state();
-
-    slice payload = authenticate_external_message(message).begin_parse();
-
-    slice new_tss_address = payload~load_bits(size::evm_address);
-    int seqno = payload~load_uint(size::seqno);
-
-    throw_if(error::invalid_seqno, seqno != (state::seqno + 1));
-
-    accept_message();
-
-    state::tss_address = new_tss_address;
-    state::seqno += 1;
-
-    ~strdump("new_tss_address");
-    new_tss_address~dump();
-
-    mutate_state();
-}
-
-;; Updated the code of the contract
-
-;; handle_code_update (cell new_code, int32 seqno)
-() handle_update_code(slice message) impure inline {
-    load_state();
-
-    slice payload = authenticate_external_message(message).begin_parse();
-
-    cell new_code = payload~load_ref();
-    int seqno = payload~load_uint(size::seqno);
-
-    throw_if(error::invalid_seqno, seqno != (state::seqno + 1));
-
-    accept_message();
-
-    ;; note that the code will be updated only after the current tx is finished
-    set_code(new_code);
-
-    mutate_state();
-}
-
 ;; Input for all external messages
 () recv_external(slice message) impure {
     int op = message~load_uint(size::op_code_size);
@@ -313,28 +316,26 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
         return handle_withdrawal(message);
     }
 
-    if (op == op::external::set_deposits_enabled) {
-        return handle_set_deposits_enabled(message);
-    }
-
-    if (op == op::external::update_tss) {
-        return handle_update_tss(message);
-    }
-
-    if (op == op::external::update_code) {
-        return handle_update_code(message);
-    }
-
     throw(error::unknown_op);
 }
 
 ;; GETTERS ========================================
 
-;; returns (int1 `deposits enabled`, int128 `total TON locked`, slice[20] `TSS address`)
-(int, int, slice) query_state() method_id {
+;; returns (
+;;   int1 `deposits enabled`,
+;;   int128 `total TON locked`,
+;;   slice[20] `TSS address`,
+;;   MsgAddress `authority address`
+;; )
+(int, int, slice, slice) query_state() method_id {
     load_state();
 
-    return (state::deposits_enabled, state::total_locked, state::tss_address);
+    return (
+        state::deposits_enabled,
+        state::total_locked,
+        state::tss_address,
+        state::authority_address
+    );
 }
 
 ;; get nonce (int32)

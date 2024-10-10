@@ -5,12 +5,11 @@ import { compile } from '@ton/blueprint';
 import * as utils from './utils';
 import { findTransaction, FlatTransactionComparable } from '@ton/test-utils/dist/test/transaction';
 import { ethers } from 'ethers';
-import { stringToCell } from '@ton/core/dist/boc/utils/strings';
+import { readString, stringToCell } from '@ton/core/dist/boc/utils/strings';
 import path from 'node:path';
 import * as fs from 'node:fs';
 import * as gw from '../wrappers/Gateway';
 
-// copied from `gas.fc`
 const gasFee = toNano('0.01');
 
 // Sample TSS wallet. In reality there's no single private key
@@ -35,15 +34,15 @@ describe('Gateway', () => {
 
     beforeEach(async () => {
         blockchain = await Blockchain.create();
+        deployer = await blockchain.treasury('deployer');
 
         const deployConfig: gw.GatewayConfig = {
             depositsEnabled: true,
-            tssAddress: tssWallet.address,
+            tss: tssWallet.address,
+            authority: deployer.address,
         };
 
         gateway = blockchain.openContract(gw.Gateway.createFromConfig(deployConfig, code));
-
-        deployer = await blockchain.treasury('deployer');
 
         const deployResult = await gateway.sendDeploy(deployer.getSender(), toNano('0.05'));
 
@@ -60,11 +59,12 @@ describe('Gateway', () => {
 
         // ASSERT
         // Check that initial state is queried correctly
-        const [depositsEnabled, valueLocked, tss] = await gateway.getQueryState();
+        const state = await gateway.getGatewayState();
 
-        expect(depositsEnabled).toBe(true);
-        expect(valueLocked).toBe(0n);
-        expect(tss).toBe(tssWallet.address.toLowerCase());
+        expect(state.depositsEnabled).toBe(true);
+        expect(state.valueLocked).toBe(0n);
+        expect(state.tss).toBe(tssWallet.address.toLowerCase());
+        expect(state.authority.toRawString()).toBe(deployer.address.toRawString());
 
         // Check that seqno works and is zero
         const nonce = await gateway.getSeqno();
@@ -140,7 +140,7 @@ describe('Gateway', () => {
         expect(gatewayBalanceAfter).toBeGreaterThanOrEqual(gatewayBalanceBefore + amount - gasFee);
 
         // Check that valueLocked is updated
-        const [_, valueLocked] = await gateway.getQueryState();
+        const { valueLocked } = await gateway.getGatewayState();
 
         expect(valueLocked).toEqual(amount - gasFee);
 
@@ -148,13 +148,10 @@ describe('Gateway', () => {
         expect(tx.outMessagesCount).toEqual(1);
 
         // Check for data in the log message
-        const depositLog = gw.parseDepositLog(tx.outMessages.get(0)!.body);
+        const log = gw.parseDepositLog(tx.outMessages.get(0)!.body);
 
-        expect(depositLog.op).toEqual(gw.GatewayOp.Deposit);
-        expect(depositLog.queryId).toEqual(0);
-        expect(depositLog.sender.toRawString()).toEqual(sender.address.toRawString());
-        expect(depositLog.amount).toEqual(amount - gasFee);
-        expect(depositLog.recipient).toEqual(evmAddress);
+        expect(log.amount).toEqual(amount - gasFee);
+        expect(log.depositFee).toEqual(toNano('0.01'));
     });
 
     it('should deposit and call', async () => {
@@ -188,14 +185,19 @@ describe('Gateway', () => {
         utils.logGasUsage(expect, tx);
 
         // Check log
-        const log = gw.parseDepositAndCallLog(tx.outMessages.get(0)!.body);
+        const log = gw.parseDepositLog(tx.outMessages.get(0)!.body);
 
-        expect(log.op).toEqual(gw.GatewayOp.DepositAndCall);
-        expect(log.queryId).toEqual(0);
-        expect(log.sender.toRawString()).toEqual(sender.address.toRawString());
         expect(log.amount).toEqual(amount - gasFee);
-        expect(log.recipient).toEqual(recipient);
-        expect(log.callData).toEqual(longText);
+        expect(log.depositFee).toEqual(toNano('0.01'));
+
+        // Parse call data from the internal message
+        const body = tx.inMessage!.body.beginParse();
+
+        // skip op + query_id + evm address
+        const callDataCell = body.skip(64 + 32 + 160).loadRef();
+
+        const callDataRestored = readString(callDataCell.asSlice());
+        expect(callDataRestored).toEqual(longText);
     });
 
     it('should perform a donation', async () => {
@@ -220,7 +222,7 @@ describe('Gateway', () => {
         utils.logGasUsage(expect, tx);
 
         // Check that valueLocked is NOT updated
-        const [_, valueLocked] = await gateway.getQueryState();
+        const { valueLocked } = await gateway.getGatewayState();
 
         // Donation doesn't count as a deposit, so no net-new locked value.
         expect(valueLocked).toEqual(0n);
@@ -245,7 +247,7 @@ describe('Gateway', () => {
             '0x95222290dd7278aa3ddd389cc1e1d165cc4bafe5',
         );
 
-        let [_, valueLocked] = await gateway.getQueryState();
+        let { valueLocked } = await gateway.getGatewayState();
         expect(valueLocked).toEqual(toNano('10'));
 
         // Given sender balance BEFORE withdrawal
@@ -260,19 +262,9 @@ describe('Gateway', () => {
             .storeUint(nonce, 32)
             .endCell();
 
-        // ... Which is signed by TSS
-        const signature = utils.signCellECDSA(tssWallet, payload);
-
-        // Given an admin command to withdraw TON
-        const cmd: gw.AdminCommand = {
-            op: gw.GatewayOp.Withdraw,
-            signature,
-            payload: payload,
-        };
-
         // ACT
         // Withdraw TON to the same sender on the behalf of TSS
-        const result = await gateway.sendAdminCommand(cmd);
+        const result = await gateway.sendTSSCommand(tssWallet, gw.GatewayOp.Withdraw, payload);
 
         // ASSERT
         // Check that tx is successful and contains expected outbound internal message
@@ -286,7 +278,9 @@ describe('Gateway', () => {
         utils.logGasUsage(expect, tx);
 
         // Check that locked funds are updated
-        [_, valueLocked] = await gateway.getQueryState();
+        const gwState = await gateway.getGatewayState();
+        valueLocked = gwState.valueLocked;
+
         expect(valueLocked).toEqual(toNano('7'));
 
         // Check nonce
@@ -324,23 +318,18 @@ describe('Gateway', () => {
             .storeUint(nonce, 32)
             .endCell();
 
-        // ... which is signed by a RANDOM EVM wallet
-        const signature = utils.signCellECDSA(someRandomEvmWallet, payload);
-
-        // Given an admin command to withdraw TON
-        const cmd: gw.AdminCommand = { op: gw.GatewayOp.Withdraw, signature, payload };
-
         // ACT & ASSERT
         // Withdraw TON and expect an error
         try {
-            const result = await gateway.sendAdminCommand(cmd);
+            // Sign with some random wallet
+            await gateway.sendTSSCommand(someRandomEvmWallet, gw.GatewayOp.Withdraw, payload);
         } catch (e: any) {
             const exitCode = e?.exitCode as number;
             expect(exitCode).toEqual(gw.GatewayError.InvalidSignature);
         }
     });
 
-    it('should exercise deposits enablement toggle', async () => {
+    it('should enable or disable deposits', async () => {
         // ARRANGE
         // Given a sender
         const sender = await blockchain.treasury('sender5');
@@ -350,17 +339,17 @@ describe('Gateway', () => {
 
         // ACT 1
         // Disable deposits
-        const result1 = await gateway.sendEnableDeposits(tssWallet, false);
+        const result1 = await gateway.sendEnableDeposits(deployer.getSender(), false);
 
         // ASSERT 1
         expectTX(result1.transactions, {
-            from: undefined,
+            from: deployer.address,
             to: gateway.address,
             success: true,
         });
 
         // Check that deposits are disabled
-        const [depositsEnabled] = await gateway.getQueryState();
+        const { depositsEnabled } = await gateway.getGatewayState();
         expect(depositsEnabled).toBe(false);
 
         // ACT 2
@@ -378,9 +367,9 @@ describe('Gateway', () => {
 
         // ACT 3
         // Enable deposits back
-        const result3 = await gateway.sendEnableDeposits(tssWallet, true);
+        const result3 = await gateway.sendEnableDeposits(deployer.getSender(), true);
         expectTX(result3.transactions, {
-            from: undefined,
+            from: deployer.address,
             to: gateway.address,
             success: true,
         });
@@ -400,6 +389,18 @@ describe('Gateway', () => {
             to: gateway.address,
             success: true,
         });
+
+        // ACT 5
+        // Disable deposits, but sender IS NOT an authority
+        const result5 = await gateway.sendEnableDeposits(sender.getSender(), false);
+
+        // ASSERT  5
+        expectTX(result5.transactions, {
+            from: sender.address,
+            to: gateway.address,
+            success: false,
+            exitCode: gw.GatewayError.InvalidAuthority,
+        });
     });
 
     it('should update tss address', async () => {
@@ -417,40 +418,19 @@ describe('Gateway', () => {
 
         // ACT 1
         // Update TSS address
-        const result1 = await gateway.sendUpdateTSS(tssWallet, newTss.address);
+        const result1 = await gateway.sendUpdateTSS(deployer.getSender(), newTss.address);
 
         // ASSERT 1
         // Check that tx is successful
         expectTX(result1.transactions, {
-            from: undefined,
+            from: deployer.address,
             to: gateway.address,
             op: gw.GatewayOp.UpdateTSS,
         });
 
         // Check that tss was updated
-        const { 2: tss } = await gateway.getQueryState();
+        const { tss } = await gateway.getGatewayState();
         expect(tss).toEqual(newTss.address.toLowerCase());
-
-        // ACT 2
-        // Do the same operation
-        // Obviously, it should fail, because the TSS was already updated
-        try {
-            await gateway.sendUpdateTSS(tssWallet, newTss.address);
-        } catch (e: any) {
-            const exitCode = e?.exitCode as number;
-            expect(exitCode).toEqual(gw.GatewayError.InvalidSignature);
-        }
-
-        // ACT 3
-        // Now let's try to invoke an admin command with the new TSS
-        const result3 = await gateway.sendEnableDeposits(newTss, true);
-
-        // ASSERT 3
-        expectTX(result3.transactions, {
-            from: undefined,
-            to: gateway.address,
-            success: true,
-        });
     });
 
     it('should update the code', async () => {
@@ -471,11 +451,11 @@ describe('Gateway', () => {
 
         // ACT
         // Update the code
-        const result = await gateway.sendUpdateCode(tssWallet, code);
+        const result = await gateway.sendUpdateCode(deployer.getSender(), code);
 
         // ASSERT
         expectTX(result.transactions, {
-            from: undefined,
+            from: deployer.address,
             to: gateway.address,
             op: gw.GatewayOp.UpdateCode,
         });
@@ -488,12 +468,59 @@ describe('Gateway', () => {
         // Try to trigger some TSS command
         // It should fail because external_message is not implemented anymore! :troll:
         try {
-            await gateway.sendEnableDeposits(tssWallet, true);
+            await gateway.sendEnableDeposits(deployer.getSender(), true);
         } catch (e: any) {
             // https://docs.ton.org/learn/tvm-instructions/tvm-exit-codes
             const exitCode = e?.exitCode as number;
             expect(exitCode).toEqual(11);
         }
+    });
+
+    it('should update authority', async () => {
+        // ARRANGE
+        // Given some value in the Gateway
+        await gateway.sendDonation(deployer.getSender(), toNano('10'));
+
+        // Given a new authority
+        const newAuth = await blockchain.treasury('newAuth');
+
+        // ACT 1
+        // Update authority
+        const result1 = await gateway.sendUpdateAuthority(deployer.getSender(), newAuth.address);
+
+        // ASSERT 1
+        expectTX(result1.transactions, {
+            from: deployer.address,
+            to: gateway.address,
+            op: gw.GatewayOp.UpdateAuthority,
+        });
+
+        const state = await gateway.getGatewayState();
+        expect(state.authority.toRawString()).toEqual(newAuth.address.toRawString());
+
+        // ACT 2
+        // Try to disable deposits with the new authority
+        const result2 = await gateway.sendEnableDeposits(newAuth.getSender(), false);
+
+        // ASSERT 2
+        expectTX(result2.transactions, {
+            from: newAuth.address,
+            to: gateway.address,
+            op: gw.GatewayOp.SetDepositsEnabled,
+            success: true,
+        });
+
+        // ACT 3
+        // And do the same for old authority and fail
+        const result3 = await gateway.sendEnableDeposits(deployer.getSender(), false);
+
+        // ASSERT 3
+        expectTX(result3.transactions, {
+            from: deployer.address,
+            to: gateway.address,
+            exitCode: gw.GatewayError.InvalidAuthority,
+            success: false,
+        });
     });
 
     // todo deposit_and_call: missing memo
