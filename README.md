@@ -23,9 +23,9 @@ The project is built using [Blueprint](https://github.com/ton-org/blueprint).
 
 ## How to use
 
-- Contract compilation: `make compile`
-- Contract tests: `make test`
-- Contract scripts: `make run`
+- Compile FunC: `make compile`
+- Run tests: `make test`
+- Run Blueprint [scripts](https://github.com/ton-org/blueprint?tab=readme-ov-file#custom-scripts): `make run`
 
 ## How it works
 
@@ -61,6 +61,9 @@ encoded as [snakeCell](https://docs.ton.org/develop/dapps/asset-processing/metad
 
 #### Authority operations
 
+These "admin" operations are used to manage the contract. In the future, they will be fully managed by TSS.
+Currently, a dedicated authority address is used `state::authority_address`
+
 - `set_deposits_enabled` - toggle deposits
 - `update_tss` - update TSS public key
 - `update_code` - upgrade the contract code
@@ -68,7 +71,7 @@ encoded as [snakeCell](https://docs.ton.org/develop/dapps/asset-processing/metad
 
 ### Withdrawals
 
-ZetaChain uses MPC to sign all outbound transactions using TSS (Threshold Signature Scheme).
+ZetaChain uses MPC (Multi Party Computation) to sign all outbound transactions using TSS (Threshold Signature Scheme).
 Due to the technical implementation TSS uses ECDSA cryptography in opposite to EdDSA in TON. Thus, we need to
 check ECDSA signatures in the contract on-chain.
 
@@ -92,7 +95,8 @@ recipient:MsgAddr amount:Coins seqno:uint32
 
 Let’s simplify the input as `["signature", "payload_hash", "payload_data"]`:
 
-- With `sig + hash`, we can derive the signer's public key -> EVM address -> check that the message comes from TSS.
-- By having `hash + payload_data`, we can check that the payload is **exactly** the same as the one that was signed.
-- Otherwise, the sender could take any valid `sig + hash`, append an **arbitrary payload**, and execute the contract
-  on behalf of TSS (e.g. "withdraw 1000 TON to address X").
+- With `signature + payload_hash`, we can derive the signer's public key -> check that the message comes from TSS.
+- By having `payload_hash + payload_data`, we can check that the payload is **exactly**
+  the same as the one that was signed.
+- Otherwise, the sender could take any valid `signature + payload_hash`,
+  append an **arbitrary payload**, and execute the contract on behalf of TSS (e.g. "withdraw 1000 TON to address X").

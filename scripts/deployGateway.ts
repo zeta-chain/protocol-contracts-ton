@@ -1,9 +1,8 @@
 import { OpenedContract, toNano } from '@ton/core';
 import { Gateway, GatewayConfig } from '../wrappers/Gateway';
 import { compile, NetworkProvider } from '@ton/blueprint';
-import { formatCoin } from '../tests/utils'; // https://etherscan.io/address/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
+import { formatCoin } from '../tests/utils';
 
-// https://etherscan.io/address/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
 const vitalikDotETH = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045';
 
 // TEST PURPOSES ONLY

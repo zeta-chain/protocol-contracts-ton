@@ -64,7 +64,7 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
 }
 
 ;; Checks that sender is the authority
-() guard_authority_sender(slice sender) impure inline {
+() guard_authority_sender(slice sender) impure inline_ref {
     throw_unless(error::invalid_authority, equal_slices(sender, state::authority_address));
 }
 
@@ -128,7 +128,7 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
     send_log_message(log);
 }
 
-;; Set deposits enabled/disabled. Note that it requires deposit fee.
+;; Enables or disables deposits.
 () handle_set_deposits_enabled(slice sender, slice message) impure inline {
     load_state();
 
@@ -140,18 +140,13 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
 }
 
 ;; Updates the TSS address. WARNING! Execute with extra caution.
-;; Wrong TSS address leads to funds loss.
-;;
-;; handle_update_tss (slice tss_address, int32 seqno)
+;; Wrong TSS address leads to loss of funds.
 () handle_update_tss(slice sender, slice message) impure inline {
     load_state();
 
     guard_authority_sender(sender);
 
     state::tss_address = message~load_bits(size::evm_address);
-
-    ~strdump("new_tss_address");
-    state::tss_address~dump();
 
     mutate_state();
 }
@@ -234,6 +229,9 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
 
         return handle_deposit_and_call(sender, msg_value, evm_recipient, call_data);
     }
+
+    ;; TODO set authority tx fee
+    ;; https://github.com/zeta-chain/protocol-contracts-ton/issues/9
 
     if (op == op::authority::set_deposits_enabled) {
         return handle_set_deposits_enabled(sender, in_msg_body);

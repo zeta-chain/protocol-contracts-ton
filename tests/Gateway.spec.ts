@@ -10,7 +10,6 @@ import path from 'node:path';
 import * as fs from 'node:fs';
 import * as gw from '../wrappers/Gateway';
 
-// copied from `gas.fc`
 const gasFee = toNano('0.01');
 
 // Sample TSS wallet. In reality there's no single private key
@@ -330,7 +329,7 @@ describe('Gateway', () => {
         }
     });
 
-    it('should toggle deposits', async () => {
+    it('should enable or disable deposits', async () => {
         // ARRANGE
         // Given a sender
         const sender = await blockchain.treasury('sender5');
@@ -393,7 +392,7 @@ describe('Gateway', () => {
 
         // ACT 5
         // Disable deposits, but sender IS NOT an authority
-        const result5 = await gateway.sendEnableDeposits(sender.getSender(), true);
+        const result5 = await gateway.sendEnableDeposits(sender.getSender(), false);
 
         // ASSERT  5
         expectTX(result5.transactions, {
