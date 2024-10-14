@@ -1,5 +1,5 @@
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
-import { beginCell, Cell, toNano, Transaction } from '@ton/core';
+import { Cell, toNano, Transaction } from '@ton/core';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
 import * as utils from './utils';
@@ -365,16 +365,10 @@ describe('Gateway', () => {
 
         // Given a withdrawal payload ...
         const withdrawAmount = toNano('3');
-        const nonce = 1;
-        const payload = beginCell()
-            .storeAddress(sender.address)
-            .storeCoins(withdrawAmount)
-            .storeUint(nonce, 32)
-            .endCell();
 
         // ACT
         // Withdraw TON to the same sender on the behalf of TSS
-        const result = await gateway.sendTSSCommand(tssWallet, gw.GatewayOp.Withdraw, payload);
+        const result = await gateway.sendWithdraw(tssWallet, sender.address, withdrawAmount);
 
         // ASSERT 1 / Withdrawal TX
         // Check withdrawal tx based on external message
@@ -445,18 +439,12 @@ describe('Gateway', () => {
 
         // Given a withdrawal payload ...
         const amount = toNano('5');
-        const nonce = 1;
-        const payload = beginCell()
-            .storeAddress(sender.address)
-            .storeCoins(amount)
-            .storeUint(nonce, 32)
-            .endCell();
 
         // ACT & ASSERT
         // Withdraw TON and expect an error
         try {
             // Sign with some random wallet
-            await gateway.sendTSSCommand(someRandomEvmWallet, gw.GatewayOp.Withdraw, payload);
+            await gateway.sendWithdraw(someRandomEvmWallet, sender.address, amount);
         } catch (e: any) {
             const exitCode = e?.exitCode as number;
             expect(exitCode).toEqual(gw.GatewayError.InvalidSignature);

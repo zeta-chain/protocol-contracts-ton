@@ -260,37 +260,34 @@ const gas::withdraw = 16000;
 
 ;; EXTERNAL MESSAGES ===============================
 
-;; Check ECDSA (!) signature of the external message
-(cell) authenticate_external_message(slice message) impure inline_ref {
-    ;; 1: Parse external message
+;; Authenticates the message with ECDSA signature and return its payload.
+cell auth::ecdsa::external(slice message, slice expected_evm_address) inline {
+    ;; 1. Get signature
     slice signature = message~load_bits(size::signature_size);
-    int hash = message~load_uint(size::hash_size);
+
+    ;; 2. Get payload cell
+    throw_if(error::no_signed_payload, message.slice_refs_empty?());
     cell payload = message~load_ref();
 
-    ;; 2: Check hash validity
-    throw_if(error::hash_mismatch, cell_hash(payload) != hash);
+    ;; 3. Calculate payload hash
+    int payload_hash = cell_hash(payload);
 
-    ;; 3: Check signature
-    int sig_check = check_ecdsa_signature(hash, signature, state::tss_address);
+    ;; 4. Check signature
+    int sig_check = check_ecdsa_signature(payload_hash, signature, expected_evm_address);
 
-    ~strdump("check_ecdsa_signature");
-    sig_check~dump();
-
-    throw_if(error::invalid_signature, sig_check != true);
+    if (sig_check != true) {
+        ~strdump("check_ecdsa_signature");
+        sig_check~dump();
+        throw(error::invalid_signature);
+    }
 
     return payload;
 }
 
 ;; Withdraws assets to the recipient
 ;;
-;; handle_withdrawal (int recipient, int amount, int seqno)
-() handle_withdrawal(slice message) impure inline {
-    load_state();
-
-    ;; Authenticate the message
-    slice payload = authenticate_external_message(message).begin_parse();
-
-    ;; Parse the payload
+;; handle_withdrawal (MsgAddr recipient, Coins amount, int seqno)
+() handle_withdrawal(slice payload) impure inline {
     slice recipient = payload~load_msg_addr();
     int amount = payload~load_coins();
     int seqno = payload~load_uint(size::seqno);
@@ -318,12 +315,16 @@ const gas::withdraw = 16000;
     mutate_state();
 }
 
-;; Input for all external messages
+;; Entry point for all external messages
 () recv_external(slice message) impure {
-    int op = message~load_uint(size::op_code_size);
+    load_state();
+
+    slice payload = auth::ecdsa::external(message, state::tss_address).begin_parse();
+
+    int op = payload~load_uint(size::op_code_size);
 
     if (op == op::external::withdraw) {
-        return handle_withdrawal(message);
+        return handle_withdrawal(payload);
     }
 
     throw(error::unknown_op);

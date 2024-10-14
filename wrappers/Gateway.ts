@@ -12,7 +12,7 @@ import {
     TupleItemInt,
 } from '@ton/core';
 import { evmAddressToSlice, loadHexStringFromBuffer, signCellECDSA } from '../tests/utils';
-import { Wallet } from 'ethers'; // copied from `gateway.fc`
+import { Wallet as EVMWallet } from 'ethers'; // copied from `gateway.fc`
 
 // copied from `gateway.fc`
 export enum GatewayOp {
@@ -174,15 +174,31 @@ export class Gateway implements Contract {
         });
     }
 
+    async sendWithdraw(
+        provider: ContractProvider,
+        signer: EVMWallet,
+        recipient: Address,
+        amount: bigint,
+    ) {
+        const seqno = await this.getNextSeqno(provider);
+        const payload = beginCell()
+            .storeUint(GatewayOp.Withdraw, 32)
+            .storeAddress(recipient)
+            .storeCoins(amount)
+            .storeUint(seqno, 32)
+            .endCell();
+
+        return await this.sendTSSCommand(provider, signer, payload);
+    }
+
     /**
      * Sign external message using ECDSA private TSS key and send it to the contract
      *
      * @param provider
      * @param signer
-     * @param op
      * @param payload
      */
-    async sendTSSCommand(provider: ContractProvider, signer: Wallet, op: number, payload: Cell) {
+    async sendTSSCommand(provider: ContractProvider, signer: EVMWallet, payload: Cell) {
         const signature = signCellECDSA(signer, payload);
 
         // SHA-256
@@ -192,11 +208,9 @@ export class Gateway implements Contract {
         }
 
         const message = beginCell()
-            .storeUint(op, 32)
             .storeBits(signature.loadBits(8)) // v
             .storeBits(signature.loadBits(256)) // r
             .storeBits(signature.loadBits(256)) // s
-            .storeBuffer(hash)
             .storeRef(payload)
             .endCell();
 

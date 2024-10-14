@@ -114,14 +114,14 @@ export function formatCoin(coins: bigint): string {
     const fractional = coins % divisor;
 
     if (fractional === 0n) {
-        return `${tons} ton`;
+        return String(tons);
     }
 
     // Ensure the fractional part is always 9 digits by padding with leading zeros if necessary
     let fractionalStr = fractional.toString().padStart(9, '0');
     fractionalStr = trimSuffix(fractionalStr, '0');
 
-    return `${tons.toString()}.${fractionalStr} ton`;
+    return `${tons.toString()}.${fractionalStr}`;
 }
 
 function trimSuffix(str: string, suffix: string): string {

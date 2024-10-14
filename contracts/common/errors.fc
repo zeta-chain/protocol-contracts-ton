@@ -1,3 +1,5 @@
+const error::generic = 100;
+
 ;; No opcode and query_id provided
 const error::no_intent = 101;
 
@@ -15,8 +17,8 @@ const error::wrong_workchain = 105;
 ;; The message has insufficient TON value
 const error::insufficient_value = 106;
 
-;; hash(payload) != provided hash
-const error::hash_mismatch = 107;
+;; The external message doesn't have a signed payload
+const error::no_signed_payload = 107;
 
 ;; ECDSA signature is invalid
 const error::invalid_signature = 108;
