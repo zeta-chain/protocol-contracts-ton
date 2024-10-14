@@ -1,6 +1,13 @@
 # ZetaChain TON Protocol Contracts
 
-Contracts of official protocol contracts deployed by the core ZetaChain team.
+Contracts of official protocol contracts deployed by the core ZetaChain team to facilitate cross-chain
+operations using TON (The Open Network) and other chains.
+
+## Supported operations
+
+- `deposit` - deposit TON to the Gateway contract
+- `deposit_and_call` - deposit TON to the Gateway contract and call a contract on the EVM side
+- `withdraw` - withdraw TON from the Gateway contract
 
 ## ⚠️ Important Notice
 
@@ -23,9 +30,10 @@ The project is built using [Blueprint](https://github.com/ton-org/blueprint).
 
 ## How to use
 
-- Compile FunC: `make compile`
-- Run tests: `make test`
-- Run Blueprint [scripts](https://github.com/ton-org/blueprint?tab=readme-ov-file#custom-scripts): `make run`
+- Compile FunC contracts: `make compile` — compiles all smart contracts written in FunC.
+- Run tests: `make test` — executes the unit tests for the contracts.
+- Run Blueprint [scripts](https://github.com/ton-org/blueprint?tab=readme-ov-file#custom-scripts):
+  `make run` — runs deployment and other scripts defined by Blueprint.
 
 ## How it works
 
@@ -67,20 +75,20 @@ Currently, a dedicated authority address is used `state::authority_address`
 - `set_deposits_enabled` - toggle deposits
 - `update_tss` - update TSS public key
 - `update_code` - upgrade the contract code
-- `update_authority` - update authority TON address
+- `update_authority` - update the authority TON address
 
 ### Withdrawals
 
 ZetaChain uses MPC (Multi Party Computation) to sign all outbound transactions using TSS (Threshold Signature Scheme).
-Due to the technical implementation TSS uses ECDSA cryptography in opposite to EdDSA in TON. Thus, we need to
-check ECDSA signatures in the contract on-chain.
+Due to the technical implementation TSS uses ECDSA cryptography in opposite to EdDSA in TON.
+Thus, the contract must verify ECDSA signatures directly on-chain.
 
 All TSS commands are represented as external messages that have the following structure:
 
-- `uint32 op_code` - operation code. Standard for TON
 - `[65]byte signature` - ECDSA signature of the message hash (v, r, s)
-- `[32]byte hash` - hash of the payload
-- `ref cell payload` - the actual payload
+- `cell ref payload` - Message payload
+    - `uint32 op_code` - operation code
+    - the rest of the payload is the operation-specific data...
 
 By having this structure we can sign arbitrary messages using ECDSA, recover signature,
 then ensure sender and proceed with the operation.
@@ -88,15 +96,12 @@ then ensure sender and proceed with the operation.
 The payload for `op withdrawal (200)` is the following:
 
 ```
-recipient:MsgAddr amount:Coins seqno:uint32
+op:uint32 recipient:MsgAddr amount:Coins seqno:uint32
 ```
 
 #### External message signature flow:
 
-Let’s simplify the input as `["signature", "payload_hash", "payload_data"]`:
-
-- With `signature + payload_hash`, we can derive the signer's public key -> check that the message comes from TSS.
-- By having `payload_hash + payload_data`, we can check that the payload is **exactly**
-  the same as the one that was signed.
-- Otherwise, the sender could take any valid `signature + payload_hash`,
-  append an **arbitrary payload**, and execute the contract on behalf of TSS (e.g. "withdraw 1000 TON to address X").
+1. Calculate the hash of the payload cell: `payload_hash` = `sha256(payload_data)`
+2. Recover ECDSA public key from the signature. Derive sender's EVM address from the public key.
+3. Check that the message comes from TSS address.
+4. Route the payload to the corresponding operation code.
