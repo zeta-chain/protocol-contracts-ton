@@ -3,14 +3,13 @@ import { beginCell, Cell, toNano, Transaction } from '@ton/core';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
 import * as utils from './utils';
+import { formatCoin } from './utils'; // Sample TSS wallet. In reality there's no single private key
 import { findTransaction, FlatTransactionComparable } from '@ton/test-utils/dist/test/transaction';
 import { ethers } from 'ethers';
 import { readString, stringToCell } from '@ton/core/dist/boc/utils/strings';
 import path from 'node:path';
 import * as fs from 'node:fs';
 import * as gw from '../wrappers/Gateway';
-
-const gasFee = toNano('0.01');
 
 // Sample TSS wallet. In reality there's no single private key
 const tssWallet = new ethers.Wallet(
@@ -20,6 +19,10 @@ const tssWallet = new ethers.Wallet(
 const someRandomEvmWallet = new ethers.Wallet(
     '0xaa8abe680332aadf79315691144f90737c0fd5b5387580c220ce40acbf2c1562',
 );
+
+const startOfYear = new Date(new Date().getFullYear(), 0, 1);
+
+const UNIX_DAY = 60 * 60 * 24;
 
 describe('Gateway', () => {
     let code: Cell;
@@ -34,6 +37,11 @@ describe('Gateway', () => {
 
     beforeEach(async () => {
         blockchain = await Blockchain.create();
+
+        // Let's say that right now it Jan 1st
+        blockchain.now = unix(startOfYear);
+
+        // Deploy the deployer :)
         deployer = await blockchain.treasury('deployer');
 
         const deployConfig: gw.GatewayConfig = {
@@ -44,13 +52,84 @@ describe('Gateway', () => {
 
         gateway = blockchain.openContract(gw.Gateway.createFromConfig(deployConfig, code));
 
-        const deployResult = await gateway.sendDeploy(deployer.getSender(), toNano('0.05'));
+        // Deploy the gateway
+        const deployResult = await gateway.sendDeploy(deployer.getSender(), toNano('1000'));
 
         expect(deployResult.transactions).toHaveTransaction({
             from: deployer.address,
             to: gateway.address,
             deploy: true,
         });
+
+        // Okay, now we want to emulate that a WEEK passed since the last contract interaction.
+        // This will trigger some storage fees.
+        blockchain.now = unix(startOfYear) + UNIX_DAY * 7;
+    });
+
+    let loggedTransactions: [string, utils.TxFeeReport, bigint, bigint][] = [];
+
+    // Helper function to analyze transaction fees after all tests (print their gas usage, fees, etc.)
+    const analyzeTX = (
+        expect: jest.Expect,
+        tx: Transaction,
+        balanceBefore: bigint,
+        balanceAfter: bigint,
+    ) => {
+        const testName = expect.getState().currentTestName!;
+        const report = utils.reportTXFees(tx);
+
+        loggedTransactions.push([testName, report, balanceBefore, balanceAfter]);
+    };
+
+    // Dumps all transactions to console & CSV after all tests
+    afterAll(() => {
+        const table = loggedTransactions.map(([name, report, balanceBefore, balanceAfter]) => {
+            const outMsgsCoins = report.outMessages.reduce(
+                (total, msgFee) => total + msgFee.coins,
+                0n,
+            );
+
+            const outMsgsFees = report.outMessages.reduce(
+                (total, msgFee) => total + msgFee.forwardFee + msgFee.importFee,
+                0n,
+            );
+
+            // noinspection JSNonASCIINames
+            return {
+                'TX Label': name,
+
+                'GW Balance Before': utils.formatCoin(balanceBefore),
+                'InMsg Coins': utils.formatCoin(report.inMessage.coins),
+                'OutMsgs Coins': utils.formatCoin(outMsgsCoins),
+                'GW Balance after': utils.formatCoin(balanceAfter),
+
+                'Total Fees': utils.formatCoin(report.totalFees),
+                'Storage Fees': utils.formatCoin(report.storageFees),
+                'Compute Fees': utils.formatCoin(report.computeFees),
+                'Gas Used': Number(report.gasUsed),
+                'Action Fees': utils.formatCoin(report.actionFees),
+                'Fwd Fees': utils.formatCoin(report.fwdFees),
+                'InMsg Import Fee': utils.formatCoin(report.inMessage.importFee),
+                'InMsg Fwd Fee': utils.formatCoin(report.inMessage.forwardFee),
+                'OutMsgs fees': utils.formatCoin(outMsgsFees),
+            };
+        });
+
+        // Brief Summary
+        console.table(table, [
+            'TX Label',
+            'Total Fees',
+            'Storage Fees',
+            'Compute Fees',
+            'Gas Used',
+            'Action Fees',
+            'InMsg Fwd Fee',
+            'OutMsgs fees',
+        ]);
+
+        table.map((row) => console.table(row));
+
+        dumpArrayToCSV(table, `gas-${jest.getSeed()}.csv`);
     });
 
     it('should deploy', async () => {
@@ -90,7 +169,7 @@ describe('Gateway', () => {
 
         // ASSERT
         // Check that tx failed with expected status code
-        expectTX(result.transactions, {
+        const tx = expectTX(result.transactions, {
             from: sender.address,
             to: gateway.address,
             success: false,
@@ -104,9 +183,11 @@ describe('Gateway', () => {
         // ... And gateway balance is not changed
         const gatewayBalanceAfter = await gateway.getBalance();
         expect(gatewayBalanceAfter).toEqual(gatewayBalanceBefore);
+
+        analyzeTX(expect, tx, gatewayBalanceBefore, gatewayBalanceAfter);
     });
 
-    it('should perform a simple deposit', async () => {
+    it('should perform a deposit', async () => {
         // ARRANGE
         // Given a sender
         const sender = await blockchain.treasury('sender1');
@@ -120,29 +201,36 @@ describe('Gateway', () => {
         // Given amount to deposit
         const amount = toNano('1');
 
+        // Given approx tx fee
+        const approxTXFee = await gateway.getTxFee(gw.GatewayOp.Deposit);
+
         // ACT
         const result = await gateway.sendDeposit(sender.getSender(), amount, evmAddress);
 
         // ASSERT
-        // Check that tx failed with expected status code
         const tx = expectTX(result.transactions, {
             from: sender.address,
             to: gateway.address,
             success: true,
         });
 
-        utils.logGasUsage(expect, tx);
-
         // Check gateway balance
         const gatewayBalanceAfter = await gateway.getBalance();
 
+        analyzeTX(expect, tx, gatewayBalanceBefore, gatewayBalanceAfter);
+
+        // Check gas usage
+        expect(tx.totalFees.coins).toBeLessThanOrEqual(approxTXFee);
+
         // result should be >= (before + amount - gasFee)
-        expect(gatewayBalanceAfter).toBeGreaterThanOrEqual(gatewayBalanceBefore + amount - gasFee);
+        expect(gatewayBalanceAfter).toBeGreaterThanOrEqual(
+            gatewayBalanceBefore + amount - approxTXFee,
+        );
 
         // Check that valueLocked is updated
         const { valueLocked } = await gateway.getGatewayState();
 
-        expect(valueLocked).toEqual(amount - gasFee);
+        expect(valueLocked).toEqual(amount - approxTXFee);
 
         // Check that we have a log with the exact amount
         expect(tx.outMessagesCount).toEqual(1);
@@ -150,11 +238,11 @@ describe('Gateway', () => {
         // Check for data in the log message
         const log = gw.parseDepositLog(tx.outMessages.get(0)!.body);
 
-        expect(log.amount).toEqual(amount - gasFee);
-        expect(log.depositFee).toEqual(toNano('0.01'));
+        expect(log.amount).toEqual(amount - approxTXFee);
+        expect(log.depositFee).toEqual(approxTXFee);
     });
 
-    it('should deposit and call', async () => {
+    it('should perform a depositAndCall', async () => {
         // ARRANGE
         // Given a sender
         const sender = await blockchain.treasury('sender1');
@@ -165,6 +253,12 @@ describe('Gateway', () => {
         // Given quite a long call data
         const longText = readFixture('long-call-data.txt');
         const callData = stringToCell(longText);
+
+        // Given gateway's balance
+        const gatewayBalanceBefore = await gateway.getBalance();
+
+        // Given approx tx fee
+        const approxTXFee = await gateway.getTxFee(gw.GatewayOp.DepositAndCall);
 
         // ACT
         const amount = toNano('10');
@@ -182,13 +276,16 @@ describe('Gateway', () => {
             success: true,
         });
 
-        utils.logGasUsage(expect, tx);
+        analyzeTX(expect, tx, gatewayBalanceBefore, await gateway.getBalance());
+
+        // Check gas usage
+        expect(tx.totalFees.coins).toBeLessThanOrEqual(approxTXFee);
 
         // Check log
         const log = gw.parseDepositLog(tx.outMessages.get(0)!.body);
 
-        expect(log.amount).toEqual(amount - gasFee);
-        expect(log.depositFee).toEqual(toNano('0.01'));
+        expect(log.amount).toBeLessThan(amount);
+        expect(log.depositFee).toEqual(approxTXFee);
 
         // Parse call data from the internal message
         const body = tx.inMessage!.body.beginParse();
@@ -202,6 +299,9 @@ describe('Gateway', () => {
 
     it('should perform a donation', async () => {
         // ARRANGE
+        // Given gateway's balance
+        const gatewayBalanceBefore = await gateway.getBalance();
+
         // Given a sender
         const sender = await blockchain.treasury('sender2');
 
@@ -219,7 +319,7 @@ describe('Gateway', () => {
             success: true,
         });
 
-        utils.logGasUsage(expect, tx);
+        analyzeTX(expect, tx, gatewayBalanceBefore, await gateway.getBalance());
 
         // Check that valueLocked is NOT updated
         const { valueLocked } = await gateway.getGatewayState();
@@ -231,34 +331,44 @@ describe('Gateway', () => {
         expect(tx.outMessagesCount).toEqual(0);
 
         // Check that balance is updated
-        const senderBalanceAfter = await sender.getBalance();
-        expect(senderBalanceAfter).toBeGreaterThanOrEqual(amount - gasFee);
+        const gatewayBalanceAfter = await gateway.getBalance();
+        const dust = toNano('0.01');
+        expect(gatewayBalanceAfter).toBeGreaterThanOrEqual(gatewayBalanceBefore + amount - dust);
     });
 
-    it('should perform a simple withdrawal', async () => {
+    it('should perform a withdrawal', async () => {
         // ARRANGE
         // Given a sender
         const sender = await blockchain.treasury('sender3');
 
-        // Who deposited 10 TON in the gateway
+        // Who deposited ~10 TON in the gateway
+        const depositAmount = toNano('10');
+        const dust = toNano('0.01');
+
         await gateway.sendDeposit(
             sender.getSender(),
-            toNano('10') + gasFee,
+            depositAmount + dust,
             '0x95222290dd7278aa3ddd389cc1e1d165cc4bafe5',
         );
 
-        let { valueLocked } = await gateway.getGatewayState();
-        expect(valueLocked).toEqual(toNano('10'));
+        const gwStateBefore = await gateway.getGatewayState();
+        const valueLockedBefore = gwStateBefore.valueLocked;
+
+        // Given gateway's balance
+        const gatewayBalanceBefore = await gateway.getBalance();
+
+        // Given approx withdrawal tx fee
+        const approxTXFee = await gateway.getTxFee(gw.GatewayOp.Withdraw);
 
         // Given sender balance BEFORE withdrawal
         const senderBalanceBefore = await sender.getBalance();
 
         // Given a withdrawal payload ...
-        const amount = toNano('3');
+        const withdrawAmount = toNano('3');
         const nonce = 1;
         const payload = beginCell()
             .storeAddress(sender.address)
-            .storeCoins(amount)
+            .storeCoins(withdrawAmount)
             .storeUint(nonce, 32)
             .endCell();
 
@@ -266,35 +376,63 @@ describe('Gateway', () => {
         // Withdraw TON to the same sender on the behalf of TSS
         const result = await gateway.sendTSSCommand(tssWallet, gw.GatewayOp.Withdraw, payload);
 
-        // ASSERT
-        // Check that tx is successful and contains expected outbound internal message
-        const tx = expectTX(result.transactions, {
-            from: gateway.address,
-            to: sender.address,
+        // ASSERT 1 / Withdrawal TX
+        // Check withdrawal tx based on external message
+        const withdrawalTx = expectTX(result.transactions, {
+            from: undefined,
+            to: gateway.address,
             success: true,
-            value: amount,
         });
 
-        utils.logGasUsage(expect, tx);
+        const gatewayBalanceAfter = await gateway.getBalance();
 
-        // Check that locked funds are updated
-        const gwState = await gateway.getGatewayState();
-        valueLocked = gwState.valueLocked;
+        analyzeTX(expect, withdrawalTx, gatewayBalanceBefore, gatewayBalanceAfter);
 
-        expect(valueLocked).toEqual(toNano('7'));
+        // Check tx gas fee
+        expect(withdrawalTx.totalFees.coins).toBeLessThanOrEqual(approxTXFee);
+
+        // Check that locked funds are updated (as well as gw balance)
+        const { valueLocked } = await gateway.getGatewayState();
+        const maxExpense = withdrawAmount + approxTXFee;
+        const valueLockedDelta = valueLockedBefore - valueLocked;
+        const gatewayBalanceDelta = gatewayBalanceBefore - gatewayBalanceAfter;
+
+        console.table({
+            'Withdrawal Amount': formatCoin(withdrawAmount),
+            'Max Expense (with approx tx fee)': formatCoin(maxExpense),
+            'Value Locked Before': formatCoin(valueLockedBefore),
+            'Value Locked After': formatCoin(valueLocked),
+            'Value Locked Delta': formatCoin(valueLockedDelta),
+            'Balance Before': formatCoin(gatewayBalanceBefore),
+            'Balance After': formatCoin(gatewayBalanceAfter),
+            'Balance Delta': formatCoin(gatewayBalanceDelta),
+        });
+
+        expect(valueLocked).toBeGreaterThanOrEqual(valueLockedBefore - maxExpense);
+        expect(gatewayBalanceAfter).toBeGreaterThanOrEqual(gatewayBalanceBefore - maxExpense);
+
+        expect(maxExpense).toEqual(valueLockedDelta);
+        expect(gatewayBalanceDelta).toBeLessThanOrEqual(valueLockedDelta);
 
         // Check nonce
         const seqno = await gateway.getSeqno();
         expect(seqno).toEqual(1);
 
+        // ASSERT 2 / Second tx with withdrawal amount
+        // Check that tx is successful and contains expected outbound internal message
+        const tx = expectTX(result.transactions, {
+            from: gateway.address,
+            to: sender.address,
+            success: true,
+            value: withdrawAmount,
+        });
+
         // Check that sender's balance is updated
         const senderBalanceAfter = await sender.getBalance();
 
-        // todo there's a tiny discrepancy in the balance, need to investigate later, probably related to fwd fees.
-        // expect(senderBalanceAfter).toEqual(senderBalanceBefore + amount);
-        const discrepancy = amount - (senderBalanceAfter - senderBalanceBefore);
-        console.log('Discrepancy:', utils.formatCoin(discrepancy));
-        expect(discrepancy).toBeLessThan(toNano('0.001'));
+        expect(senderBalanceAfter).toBeGreaterThanOrEqual(
+            senderBalanceBefore + withdrawAmount - tx.totalFees.coins,
+        );
     });
 
     it('should fail a withdrawal signed not by TSS', async () => {
@@ -303,11 +441,7 @@ describe('Gateway', () => {
         const sender = await blockchain.treasury('sender4');
 
         // Who deposited 10 TON in the gateway
-        await gateway.sendDeposit(
-            sender.getSender(),
-            toNano('10') + gasFee,
-            someRandomEvmWallet.address,
-        );
+        await gateway.sendDeposit(sender.getSender(), toNano('10'), someRandomEvmWallet.address);
 
         // Given a withdrawal payload ...
         const amount = toNano('5');
@@ -337,16 +471,21 @@ describe('Gateway', () => {
         // Given some donation to the Gateway
         await gateway.sendDonation(sender.getSender(), toNano('10'));
 
+        // Given gateway's balance
+        const gatewayBalanceBefore = await gateway.getBalance();
+
         // ACT 1
         // Disable deposits
         const result1 = await gateway.sendEnableDeposits(deployer.getSender(), false);
 
         // ASSERT 1
-        expectTX(result1.transactions, {
+        const tx = expectTX(result1.transactions, {
             from: deployer.address,
             to: gateway.address,
             success: true,
         });
+
+        analyzeTX(expect, tx, gatewayBalanceBefore, await gateway.getBalance());
 
         // Check that deposits are disabled
         const { depositsEnabled } = await gateway.getGatewayState();
@@ -408,6 +547,9 @@ describe('Gateway', () => {
         // Given some TON in the Gateway
         await gateway.sendDonation(deployer.getSender(), toNano('10'));
 
+        // Given gateway's balance
+        const gatewayBalanceBefore = await gateway.getBalance();
+
         // Given a new TSS address
         // Let's say we've bumped the number of observer&signers, thus we require a new TSS wallet
         const newTss = new ethers.Wallet(
@@ -422,11 +564,13 @@ describe('Gateway', () => {
 
         // ASSERT 1
         // Check that tx is successful
-        expectTX(result1.transactions, {
+        const tx = expectTX(result1.transactions, {
             from: deployer.address,
             to: gateway.address,
             op: gw.GatewayOp.UpdateTSS,
         });
+
+        analyzeTX(expect, tx, gatewayBalanceBefore, await gateway.getBalance());
 
         // Check that tss was updated
         const { tss } = await gateway.getGatewayState();
@@ -437,6 +581,9 @@ describe('Gateway', () => {
         // ARRANGE
         // Given some value in the Gateway
         await gateway.sendDonation(deployer.getSender(), toNano('10'));
+
+        // Given gateway's balance
+        const gatewayBalanceBefore = await gateway.getBalance();
 
         // Given a new code
         const code = await utils.compileFuncInline(`
@@ -454,11 +601,13 @@ describe('Gateway', () => {
         const result = await gateway.sendUpdateCode(deployer.getSender(), code);
 
         // ASSERT
-        expectTX(result.transactions, {
+        const tx = expectTX(result.transactions, {
             from: deployer.address,
             to: gateway.address,
             op: gw.GatewayOp.UpdateCode,
         });
+
+        analyzeTX(expect, tx, gatewayBalanceBefore, await gateway.getBalance());
 
         // Try to query this new "ping" method
         const result2 = await blockchain.runGetMethod(gateway.address, 'ping', []);
@@ -481,6 +630,9 @@ describe('Gateway', () => {
         // Given some value in the Gateway
         await gateway.sendDonation(deployer.getSender(), toNano('10'));
 
+        // Given gateway's balance
+        const gatewayBalanceBefore = await gateway.getBalance();
+
         // Given a new authority
         const newAuth = await blockchain.treasury('newAuth');
 
@@ -489,11 +641,13 @@ describe('Gateway', () => {
         const result1 = await gateway.sendUpdateAuthority(deployer.getSender(), newAuth.address);
 
         // ASSERT 1
-        expectTX(result1.transactions, {
+        const tx = expectTX(result1.transactions, {
             from: deployer.address,
             to: gateway.address,
             op: gw.GatewayOp.UpdateAuthority,
         });
+
+        analyzeTX(expect, tx, gatewayBalanceBefore, await gateway.getBalance());
 
         const state = await gateway.getGatewayState();
         expect(state.authority.toRawString()).toEqual(newAuth.address.toRawString());
@@ -523,11 +677,11 @@ describe('Gateway', () => {
         });
     });
 
+    // todo withdrawals: send to non-existing address
     // todo deposit_and_call: missing memo
     // todo deposit_and_call: memo is too long
     // todo deposits: should fail because the value is too small
     // todo deposits: check that gas costs are always less than 0.01 for long memos
-    // todo withdrawals: amount is more than locked (should not be possible, but still worth checking)
 });
 
 export function expectTX(transactions: Transaction[], cmp: FlatTransactionComparable): Transaction {
@@ -544,4 +698,25 @@ function readFixture(fixturePath: string): string {
     const buf = fs.readFileSync(filePath, 'utf-8');
 
     return buf.toString();
+}
+
+function unix(date: Date): number {
+    return Math.floor(date.getTime() / 1000);
+}
+
+function dumpArrayToCSV(data: Array<any>, fileName: string) {
+    const headers = Object.keys(data[0]);
+
+    const csvRows = data.map((entry) => {
+        return headers.map((header) => `${entry[header]}`).join(',');
+    });
+
+    const csvContent = [headers.join(','), ...csvRows].join('\n').replace(/ ton/g, '');
+
+    const filePath = path.join(process.cwd(), 'temp', 'tests', fileName);
+
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, csvContent, 'utf8');
+
+    console.log(`CSV file saved to: ${filePath}`);
 }

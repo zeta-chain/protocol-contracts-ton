@@ -9,6 +9,7 @@ import {
     Sender,
     SendMode,
     toNano,
+    TupleItemInt,
 } from '@ton/core';
 import { evmAddressToSlice, loadHexStringFromBuffer, signCellECDSA } from '../tests/utils';
 import { Wallet } from 'ethers'; // copied from `gateway.fc`
@@ -54,7 +55,6 @@ export function gatewayConfigToCell(config: GatewayConfig): Cell {
     return beginCell()
         .storeUint(config.depositsEnabled ? 1 : 0, 1) // deposits_enabled
         .storeCoins(0) // total_locked
-        .storeCoins(0) // fees
         .storeUint(0, 32) // seqno
         .storeSlice(tss) // tss_address
         .storeAddress(config.authority) // authority_address
@@ -80,7 +80,7 @@ export class Gateway implements Contract {
     async sendDeploy(provider: ContractProvider, via: Sender, value: bigint) {
         await provider.internal(via, {
             value,
-            sendMode: SendMode.PAY_GAS_SEPARATELY,
+            sendMode: SendMode.NONE,
             body: beginCell().endCell(),
         });
     }
@@ -168,7 +168,7 @@ export class Gateway implements Contract {
 
     async sendAuthorityCommand(provider: ContractProvider, via: Sender, body: Cell) {
         await provider.internal(via, {
-            value: toNano('0.01'),
+            value: toNano('0.1'),
             sendMode: SendMode.PAY_GAS_SEPARATELY,
             body,
         });
@@ -229,6 +229,15 @@ export class Gateway implements Contract {
         const response = await provider.get('seqno', []);
 
         return response.stack.readNumber();
+    }
+
+    async getTxFee(provider: ContractProvider, op: GatewayOp): Promise<bigint> {
+        const v = BigInt(op.valueOf());
+        const bigOp: TupleItemInt = { type: 'int', value: v };
+
+        const response = await provider.get('calculate_gas_fee', [bigOp]);
+
+        return response.stack.readBigNumber();
     }
 
     private async getNextSeqno(provider: ContractProvider): Promise<number> {

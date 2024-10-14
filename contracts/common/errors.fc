@@ -1,7 +1,3 @@
-;; The internal message is bouncable,
-;; we don't support this at the moment.
-const error::bouncable = 100;
-
 ;; No opcode and query_id provided
 const error::no_intent = 101;
 

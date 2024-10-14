@@ -61,11 +61,8 @@ builder store_msg_address_int(builder b, int wc, int addr) inline {
 ;;
 ;; Sends an arbitrary internal message
 ;; (uint256 recipient, uint128 amount, cell body, int mode)
-() send_simple_message(int recipient, int amount, cell body, int mode) impure inline {
+() send_simple_message(int recipient, int amount, int mode) impure inline {
     ~strdump("send_simple_message");
-
-    ;; todo what happend if the recipient doesn't exits?
-    ;; todo what happens if the message is bounced?
 
     cell msg = begin_cell()
         .store_uint(message_header_bits, 6)
