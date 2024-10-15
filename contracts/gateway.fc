@@ -307,10 +307,8 @@ cell auth::ecdsa::external(slice message, slice expected_evm_address) inline {
     state::seqno += 1;
 
     ;; Sent TON and mutate the state
-    ;; todo what happend if the recipient doesn't exist?
-    ;; todo send non bounceable message
     int send_mode = message::flag::pay_fees_separately;
-    send_simple_message(recipient_addr, amount, send_mode);
+    send_simple_message_non_bounceable(recipient_addr, amount, send_mode);
 
     mutate_state();
 }

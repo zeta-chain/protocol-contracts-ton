@@ -38,11 +38,12 @@ const message::flag::pay_fees_separately = 1;
 const message_filler_bits = 1 + 4 + 4 + 64 + 32 + 1 + 1;
 
 ;; int_msg_info$0 ihr_disabled:Bool bounce:Bool bounced:Bool src:MsgAddressInt (bits)
-;; 0 1 1 0 00 => 011000 => 24 dec => 0x18 hex for 6 bits
+;; 0 1 1 0 00 => 011000 => 0x18 hex for 6 bits
+;; 0 1 0 0 00 => 010000 => 0x10 hex for 6 bits
 ;;
 ;; Note that sender address will be set automatically
-const message_header_bits = 0x18;
-
+const message::header::bounceable = 0x18;
+const message::header::nonbounceable = 0x10;
 
 ;; addr_std$10 anycast:(Maybe Anycast)
 ;;    workchain_id:int8 address:bits256  = MsgAddressInt;
@@ -53,25 +54,27 @@ builder store_msg_address_int(builder b, int wc, int addr) inline {
         .store_uint(addr, 256);
 }
 
-
+;; Sends an arbitrary internal message w/o body
+;;
 ;; int_msg_info$0 ihr_disabled:Bool bounce:Bool bounced:Bool
 ;;   src:MsgAddressInt dest:MsgAddressInt
 ;;   value:CurrencyCollection ihr_fee:Grams fwd_fee:Grams
 ;;   created_lt:uint64 created_at:uint32 = CommonMsgInfo;
-;;
-;; Sends an arbitrary internal message
-;; (uint256 recipient, uint128 amount, cell body, int mode)
-() send_simple_message(int recipient, int amount, int mode) impure inline {
+() send_simple_message(int recipient, int amount, int header_bits, int mode) impure inline_ref {
     ~strdump("send_simple_message");
 
     cell msg = begin_cell()
-        .store_uint(message_header_bits, 6)
+        .store_uint(header_bits, 6)
         .store_msg_address_int(0, recipient)
         .store_coins(amount)
         .store_uint(0, message_filler_bits)
         .end_cell();
 
     send_raw_message(msg, mode);
+}
+
+() send_simple_message_non_bounceable(int recipient, int amount, int mode) impure inline {
+    return send_simple_message(recipient, amount, message::header::nonbounceable, mode);
 }
 
 

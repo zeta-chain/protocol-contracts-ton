@@ -3,7 +3,7 @@ import { Cell, toNano, Transaction } from '@ton/core';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
 import * as utils from './utils';
-import { formatCoin } from './utils'; // Sample TSS wallet. In reality there's no single private key
+import { formatCoin } from './utils';
 import { findTransaction, FlatTransactionComparable } from '@ton/test-utils/dist/test/transaction';
 import { ethers } from 'ethers';
 import { readString, stringToCell } from '@ton/core/dist/boc/utils/strings';
@@ -451,6 +451,54 @@ describe('Gateway', () => {
         }
     });
 
+    it('should withdraw for non-existent address', async () => {
+        // ARRANGE
+        // Given some funds in the gateway
+        await gateway.sendDeposit(
+            deployer.getSender(),
+            toNano('10'),
+            '0x95222290dd7278aa3ddd389cc1e1d165cc4bafe5',
+        );
+
+        const gatewayBalanceBefore = await gateway.getBalance();
+
+        // Given a receiver that is NOT yet deployed
+        let receiver = await blockchain.treasury('receiver', { predeploy: false });
+
+        const receiverState = await blockchain.getContract(receiver.address);
+        expect(receiverState.accountState?.type).toEqual('uninit');
+
+        // Given a withdrawal amount
+        const withdrawAmount = toNano('5');
+
+        // ACT
+        // Withdraw TON to the same sender on the behalf of TSS
+        const result = await gateway.sendWithdraw(tssWallet, receiver.address, withdrawAmount);
+
+        // ASSERT
+        // We should have 2 txs:
+        //   - tx1: external message -> gateway -> send to receiver
+        //   - tx2: internal message from the gateway -> sent to non-existent receiver
+        expect(result.transactions.length).toEqual(2);
+
+        // Check withdrawal tx invoked by external message
+        const withdrawalTX = expectTX(result.transactions, {
+            from: undefined,
+            to: gateway.address,
+            success: true,
+        });
+
+        analyzeTX(expect, withdrawalTX, gatewayBalanceBefore, await gateway.getBalance());
+
+        // Check received tx
+        expectTX(result.transactions, {
+            from: gateway.address,
+            to: receiver.address,
+            value: withdrawAmount,
+            aborted: true,
+        });
+    });
+
     it('should enable or disable deposits', async () => {
         // ARRANGE
         // Given a sender
@@ -665,11 +713,10 @@ describe('Gateway', () => {
         });
     });
 
-    // todo withdrawals: send to non-existing address
-    // todo deposit_and_call: missing memo
-    // todo deposit_and_call: memo is too long
     // todo deposits: should fail because the value is too small
     // todo deposits: check that gas costs are always less than 0.01 for long memos
+    // todo deposit_and_call: missing memo
+    // todo deposit_and_call: memo is too long
 });
 
 export function expectTX(transactions: Transaction[], cmp: FlatTransactionComparable): Transaction {
