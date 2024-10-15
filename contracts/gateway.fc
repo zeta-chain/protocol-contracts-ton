@@ -77,14 +77,13 @@ const gas::withdraw = 16000;
 () guard_cell_size(cell data, int max_size_bits, int throw_error) impure inline {
     int max_size_cells = (max_size_bits / 1023) + 1;
 
-    ;; note that if count(child cells) > max_size_cells, TVM will exit with code 7;
-    (_, int data_bits, _) = compute_data_size(data, max_size_cells);
+    (_, int data_bits, _, int ok) = compute_data_size?(data, max_size_cells);
 
-    if (data_bits > max_size_bits) {
-        ~strdump("cell size is too big: [got, want]");
-        data_bits~dump();
-        max_size_bits~dump();
+    if (ok == false) {
+        throw(throw_error);
+    }
 
+    if ((data_bits == 0) | (data_bits > max_size_bits)) {
         throw(throw_error);
     }
 }
@@ -193,7 +192,7 @@ const gas::withdraw = 16000;
     slice new_authority = message~load_msg_addr();
 
     ;; Validate the workchain & address
-    (int wc, int addr) = parse_std_addr(new_authority);
+    (int wc, _) = parse_std_addr(new_authority);
     throw_unless(error::wrong_workchain, wc == 0);
 
     state::authority_address = new_authority;

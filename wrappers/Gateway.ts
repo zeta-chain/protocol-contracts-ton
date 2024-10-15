@@ -30,6 +30,8 @@ export enum GatewayOp {
 // copied from `errors.fc`
 export enum GatewayError {
     NoIntent = 101,
+    InvalidCallData = 104,
+    InsufficientValue = 106,
     InvalidSignature = 108,
     DepositsDisabled = 110,
     InvalidAuthority = 111,

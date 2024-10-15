@@ -1,5 +1,5 @@
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
-import { Cell, toNano, Transaction } from '@ton/core';
+import { beginCell, Cell, toNano, Transaction } from '@ton/core';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
 import * as utils from './utils';
@@ -242,6 +242,37 @@ describe('Gateway', () => {
         expect(log.depositFee).toEqual(approxTXFee);
     });
 
+    it('should fail deposit due to amount too small', async () => {
+        // ARRANGE
+        // Given a sender
+        const sender = await blockchain.treasury('sender1');
+
+        // Given gateway's balance
+        const gatewayBalanceBefore = await gateway.getBalance();
+
+        // Given memo with EVM address (20 bytes)
+        const evmAddress = '0x92215391d24c75eb005eb4b7c8c55bf0036604a5';
+
+        // Given approx tx fee
+        const approxTXFee = await gateway.getTxFee(gw.GatewayOp.Deposit);
+
+        // Given amount to deposit that is 66% of approx tx fee
+        const amount = (approxTXFee * 2n) / 3n;
+
+        // ACT
+        const result = await gateway.sendDeposit(sender.getSender(), amount, evmAddress);
+
+        // ASSERT
+        const tx = expectTX(result.transactions, {
+            from: sender.address,
+            to: gateway.address,
+            success: false,
+            exitCode: gw.GatewayError.InsufficientValue,
+        });
+
+        analyzeTX(expect, tx, gatewayBalanceBefore, await gateway.getBalance());
+    });
+
     it('should perform a depositAndCall', async () => {
         // ARRANGE
         // Given a sender
@@ -295,6 +326,71 @@ describe('Gateway', () => {
 
         const callDataRestored = readString(callDataCell.asSlice());
         expect(callDataRestored).toEqual(longText);
+    });
+
+    it('should fail depositAndCall due to missing memo', async () => {
+        // ARRANGE
+        // Given a sender
+        const sender = await blockchain.treasury('sender1');
+
+        // Given zevm address
+        const recipient = '0x95222290dd7278aa3ddd389cc1e1d165cc4bafe5';
+
+        // Given gateway's balance
+        const gatewayBalanceBefore = await gateway.getBalance();
+
+        // ACT
+        const amount = toNano('10');
+        const result = await gateway.sendDepositAndCall(
+            sender.getSender(),
+            amount,
+            recipient,
+            beginCell().endCell(),
+        );
+
+        // ASSERT
+        const tx = expectTX(result.transactions, {
+            from: sender.address,
+            to: gateway.address,
+            exitCode: gw.GatewayError.InvalidCallData,
+            success: false,
+        });
+
+        analyzeTX(expect, tx, gatewayBalanceBefore, await gateway.getBalance());
+    });
+
+    it('should fail depositAndCall due to large memo', async () => {
+        // ARRANGE
+        // Given a sender
+        const sender = await blockchain.treasury('sender1');
+
+        // Given zevm address
+        const recipient = '0x95222290dd7278aa3ddd389cc1e1d165cc4bafe5';
+
+        // Given quite a long call data x2
+        const longText = readFixture('long-call-data.txt');
+        const callData = stringToCell(longText + longText);
+
+        // Given gateway's balance
+        const gatewayBalanceBefore = await gateway.getBalance();
+
+        // ACT
+        const result = await gateway.sendDepositAndCall(
+            sender.getSender(),
+            toNano('10'),
+            recipient,
+            callData,
+        );
+
+        // ASSERT
+        const tx = expectTX(result.transactions, {
+            from: sender.address,
+            to: gateway.address,
+            success: false,
+            exitCode: gw.GatewayError.InvalidCallData,
+        });
+
+        analyzeTX(expect, tx, gatewayBalanceBefore, await gateway.getBalance());
     });
 
     it('should perform a donation', async () => {
@@ -712,11 +808,6 @@ describe('Gateway', () => {
             success: false,
         });
     });
-
-    // todo deposits: should fail because the value is too small
-    // todo deposits: check that gas costs are always less than 0.01 for long memos
-    // todo deposit_and_call: missing memo
-    // todo deposit_and_call: memo is too long
 });
 
 export function expectTX(transactions: Transaction[], cmp: FlatTransactionComparable): Transaction {
