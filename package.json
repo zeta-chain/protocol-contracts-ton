@@ -6,6 +6,7 @@
     "scripts": {
         "start": "blueprint run",
         "build": "blueprint build",
+        "prettier": "prettier -c .",
         "test": "jest --verbose"
     },
     "devDependencies": {

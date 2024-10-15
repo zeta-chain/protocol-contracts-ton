@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "21.1.0"
+
+      - name: NPM install
+        run: npm install
+
+      - name: Run Prettier
+        run: npm run prettier
+
+      - name: Run Tests
+        run: |
+          npm run test | tee test_output.txt
+
+      - name: Find Gas Report
+        id: find_report
+        run: |
+          file_path=$(sed -n 's/CSV file saved to: //p' test_output.txt | xargs)
+          if [ -z "$file_path" ]; then
+            echo "No gas report found."
+            exit 1
+          else
+            echo "Found gas report at $file_path"
+            mv "$file_path" gas_report.csv
+          fi
+
+      - name: Upload Gas Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: gas_report.csv
+          path: gas_report.csv
