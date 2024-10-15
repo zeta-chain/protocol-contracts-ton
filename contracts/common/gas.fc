@@ -22,6 +22,9 @@ cell get_gas_config_param(int wc) inline {
     return (param, gas_price);
 }
 
+;; Parses TON's gas params that might be stored in different TL-B structures.
+;; (look for GasLimitsPrices in Block.tlb).
+;; https://docs.ton.org/develop/howto/blockchain-configs#param-20-and-21
 (slice, (int, int, int)) load_gas_limits_prices(slice param) inline_ref {
     var contructor_tag = param~load_uint(8);
     if (contructor_tag == 0xd1) {
@@ -36,11 +39,13 @@ cell get_gas_config_param(int wc) inline {
     }
 }
 
+;; Get gas limits and prices based on workchain_id
 (int, int, int) get_gas_limits_prices(int wc) inline {
     var gas_price_config = get_gas_config_param(wc).begin_parse();
     return gas_price_config~load_gas_limits_prices();
 }
 
+;; Get gas fee for workchain_id=wc
 int get_gas_fee(int gas_amount, int wc) inline {
     ;; gas_price is a price in nano-tons per 2^16 gas units.
     var (flat_gas_limit, flat_gas_price, gas_price) = get_gas_limits_prices(wc);
@@ -52,6 +57,7 @@ int get_gas_fee(int gas_amount, int wc) inline {
     return flat_gas_price + (gas_amount - flat_gas_limit) * (gas_price >> 16);
 }
 
+;; Get gas fee for workchain_id=0
 int get_gas_fee_workchain(int gas_amount) inline_ref {
     return get_gas_fee(gas_amount, 0);
 }
