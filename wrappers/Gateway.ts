@@ -82,7 +82,7 @@ export class Gateway implements Contract {
     async sendDeploy(provider: ContractProvider, via: Sender, value: bigint) {
         await provider.internal(via, {
             value,
-            sendMode: SendMode.NONE,
+            sendMode: SendMode.PAY_GAS_SEPARATELY,
             body: beginCell().endCell(),
         });
     }

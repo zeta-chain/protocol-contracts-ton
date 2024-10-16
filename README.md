@@ -33,7 +33,7 @@ The project is built using [Blueprint](https://github.com/ton-org/blueprint).
 - Compile FunC contracts: `make compile` — compiles all smart contracts written in FunC.
 - Run tests: `make test` — executes the unit tests for the contracts.
 - Run Blueprint [scripts](https://github.com/ton-org/blueprint?tab=readme-ov-file#custom-scripts):
-  `make run` — runs deployment and other scripts defined by Blueprint.
+  `make deploy` — deploys the contracts to the network.
 
 ## How it works
 
