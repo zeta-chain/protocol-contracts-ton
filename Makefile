@@ -11,3 +11,6 @@ test: ## Run contract tests
 
 deploy: ## Run deployment script
 	npx blueprint run deploy
+
+tx: ## Execute a transaction to the Gateway
+	npx blueprint run transaction

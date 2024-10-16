@@ -146,17 +146,13 @@ export function signCellECDSA(signer: Wallet, cell: Cell, log: boolean = false):
     //
     // `ECRECOVER` Recovers public key from signature...
     // Takes 32-byte hash as uint256 hash; 65-byte signature as uint8 v and uint256 r, s.
-    const [v, r, s] = [sig.v, sig.r, sig.s];
-
-    const bigV = BigInt(v);
-    const bigR = BigInt(r);
-    const bigS = BigInt(s);
+    const [v, r, s] = [Number(sig.v), BigInt(sig.r), BigInt(sig.s)];
 
     if (log) {
-        console.log('signCellECDSA', { bigV, bigR, bigS });
+        console.log('signCellECDSA', { v, r, s });
     }
 
-    return beginCell().storeUint(bigV, 8).storeUint(bigR, 256).storeUint(bigS, 256).asSlice();
+    return beginCell().storeUint(v, 8).storeUint(r, 256).storeUint(s, 256).asSlice();
 }
 
 /**
