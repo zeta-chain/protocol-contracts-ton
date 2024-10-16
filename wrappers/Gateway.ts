@@ -35,6 +35,7 @@ export enum GatewayError {
     InvalidSignature = 108,
     DepositsDisabled = 110,
     InvalidAuthority = 111,
+    InvalidTVMRecipient = 112,
 }
 
 export type GatewayConfig = {

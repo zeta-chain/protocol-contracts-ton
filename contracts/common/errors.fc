@@ -31,3 +31,6 @@ const error::deposits_disabled = 110;
 
 ;; Authority sender is invalid
 const error::invalid_authority = 111;
+
+;; Recipient in TVM is invalid
+const error::invalid_tvm_recipient = 112;

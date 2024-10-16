@@ -525,28 +525,6 @@ describe('Gateway', () => {
         );
     });
 
-    it('should fail a withdrawal signed not by TSS', async () => {
-        // ARRANGE
-        // Given a sender
-        const sender = await blockchain.treasury('sender4');
-
-        // Who deposited 10 TON in the gateway
-        await gateway.sendDeposit(sender.getSender(), toNano('10'), someRandomEvmWallet.address);
-
-        // Given a withdrawal payload ...
-        const amount = toNano('5');
-
-        // ACT & ASSERT
-        // Withdraw TON and expect an error
-        try {
-            // Sign with some random wallet
-            await gateway.sendWithdraw(someRandomEvmWallet, sender.address, amount);
-        } catch (e: any) {
-            const exitCode = e?.exitCode as number;
-            expect(exitCode).toEqual(gw.GatewayError.InvalidSignature);
-        }
-    });
-
     it('should withdraw for non-existent address', async () => {
         // ARRANGE
         // Given some funds in the gateway
@@ -593,6 +571,51 @@ describe('Gateway', () => {
             value: withdrawAmount,
             aborted: true,
         });
+    });
+
+    it('should fail a withdrawal signed not by TSS', async () => {
+        // ARRANGE
+        // Given a sender
+        const sender = await blockchain.treasury('sender4');
+
+        // Who deposited 10 TON in the gateway
+        await gateway.sendDeposit(sender.getSender(), toNano('10'), someRandomEvmWallet.address);
+
+        // Given a withdrawal payload ...
+        const recipient = gateway.address;
+        const amount = toNano('5');
+
+        // ACT & ASSERT
+        // Withdraw TON and expect an error
+        try {
+            // Sign with some random wallet
+            await gateway.sendWithdraw(someRandomEvmWallet, recipient, amount);
+        } catch (e: any) {
+            const exitCode = e?.exitCode as number;
+            expect(exitCode).toEqual(gw.GatewayError.InvalidSignature);
+        }
+    });
+
+    it('should fail a withdrawal to itself', async () => {
+        // ARRANGE
+        // Given a sender
+        const sender = await blockchain.treasury('sender4');
+
+        // Who deposited 10 TON in the gateway
+        await gateway.sendDeposit(sender.getSender(), toNano('10'), someRandomEvmWallet.address);
+
+        // Given a withdrawal payload ...
+        const recipient = gateway.address;
+        const amount = toNano('5');
+
+        // ACT & ASSERT
+        // Withdraw TON and expect an error
+        try {
+            await gateway.sendWithdraw(tssWallet, recipient, amount);
+        } catch (e: any) {
+            const exitCode = e?.exitCode as number;
+            expect(exitCode).toEqual(gw.GatewayError.InvalidTVMRecipient);
+        }
     });
 
     it('should enable or disable deposits', async () => {

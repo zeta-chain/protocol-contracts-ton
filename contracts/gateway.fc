@@ -32,7 +32,7 @@ const op::authority::update_authority = 204;
 const gas::deposit = 10000;
 const gas::deposit_and_call = 13000;
 const gas::authority = 20000;
-const gas::withdraw = 16000;
+const gas::withdraw = 17000;
 
 ;; PARSING =========================================
 
@@ -287,12 +287,15 @@ cell auth::ecdsa::external(slice message, slice expected_evm_address) inline {
 ;;
 ;; handle_withdrawal (MsgAddr recipient, Coins amount, int seqno)
 () handle_withdrawal(slice payload) impure inline {
+    ;; load the body
     slice recipient = payload~load_msg_addr();
     int amount = payload~load_coins();
     int seqno = payload~load_uint(size::seqno);
 
+    ;; validate the recipient
     (int wc, int recipient_addr) = recipient.parse_std_addr();
     throw_unless(error::wrong_workchain, wc == 0);
+    throw_if(error::invalid_tvm_recipient, equal_slices(recipient, my_address()));
 
     throw_if(error::insufficient_value, amount == 0);
     throw_if(error::invalid_seqno, seqno != (state::seqno + 1));
