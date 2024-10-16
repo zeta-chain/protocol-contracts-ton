@@ -5,6 +5,7 @@
 #include "common/state.fc";
 #include "common/messages.fc";
 #include "common/crypto.fc";
+#include "common/gas.fc";
 
 ;; Sizes ===========================================
 const size::op_code_size = 32;
@@ -25,9 +26,13 @@ const op::authority::update_tss = 202;
 const op::authority::update_code = 203;
 const op::authority::update_authority = 204;
 
-;; GAS FEE =========================================
-;; Let's use const for now and refine this later
-const deposit_gas_fee = 10000000; ;; 0.01 TON
+;; GAS FEES =========================================
+;; These constants are empirically determined based on tests
+;; and slighly bumped to cover all other non-gas fees (e.g. storage, fwd_fee, etc.)
+const gas::deposit = 10000;
+const gas::deposit_and_call = 13000;
+const gas::authority = 20000;
+const gas::withdraw = 17000;
 
 ;; PARSING =========================================
 
@@ -72,27 +77,32 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
 () guard_cell_size(cell data, int max_size_bits, int throw_error) impure inline {
     int max_size_cells = (max_size_bits / 1023) + 1;
 
-    ;; note that if count(child cells) > max_size_cells, TVM will exit with code 7;
-    (_, int data_bits, _) = compute_data_size(data, max_size_cells);
+    (_, int data_bits, _, int ok) = compute_data_size?(data, max_size_cells);
 
-    if (data_bits > max_size_bits) {
-        ~strdump("cell size is too big: [got, want]");
-        data_bits~dump();
-        max_size_bits~dump();
+    if (ok == false) {
+        throw(throw_error);
+    }
 
+    if ((data_bits == 0) | (data_bits > max_size_bits)) {
         throw(throw_error);
     }
 }
 
 ;; deposit TON to the gateway and specify the EVM recipient on ZetaChain
-() handle_deposit(slice sender, int amount, int evm_recipient) impure inline {
+() handle_deposit(int amount, slice in_msg_body) impure inline {
     load_state();
     guard_deposits();
 
-    int deposit_amount = amount - deposit_gas_fee;
+    ;; read evm recipient
+    throw_if(error::invalid_evm_recipient, in_msg_body.slice_bits() < size::evm_address);
+    in_msg_body~load_uint(size::evm_address);
+
+    int tx_fee = get_gas_fee_workchain(gas::deposit);
+    throw_if(error::insufficient_value, amount <= tx_fee);
+
+    int deposit_amount = amount - tx_fee;
 
     state::total_locked += deposit_amount;
-    state::fees += deposit_gas_fee;
 
     mutate_state();
 
@@ -100,21 +110,29 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
     ;; The rest we can parse from inbound message on the observer side
     cell log = begin_cell()
         .store_coins(deposit_amount)
-        .store_coins(deposit_gas_fee)
+        .store_coins(tx_fee)
         .end_cell();
 
     send_log_message(log);
 }
 
-() handle_deposit_and_call(slice sender, int amount, int evm_recipient, cell call_data) impure inline {
+() handle_deposit_and_call(int amount, slice in_msg_body) impure inline {
     load_state();
     guard_deposits();
+
+    throw_if(error::invalid_evm_recipient, in_msg_body.slice_bits() < size::evm_address);
+    in_msg_body~load_uint(size::evm_address);
+
+    throw_if(error::invalid_call_data, in_msg_body.slice_refs_empty?());
+    cell call_data = in_msg_body~load_ref();
     guard_cell_size(call_data, size::call_data::max, error::invalid_call_data);
 
-    int deposit_amount = amount - deposit_gas_fee;
+    int tx_fee = get_gas_fee_workchain(gas::deposit_and_call);
+    throw_if(error::insufficient_value, amount <= tx_fee);
+
+    int deposit_amount = amount - tx_fee;
 
     state::total_locked += deposit_amount;
-    state::fees += deposit_gas_fee;
 
     mutate_state();
 
@@ -122,7 +140,7 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
     ;; The rest we can parse from inbound message on the observer side
     cell log = begin_cell()
         .store_coins(deposit_amount)
-        .store_coins(deposit_gas_fee)
+        .store_coins(tx_fee)
         .end_cell();
 
     send_log_message(log);
@@ -174,7 +192,7 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
     slice new_authority = message~load_msg_addr();
 
     ;; Validate the workchain & address
-    (int wc, int addr) = parse_std_addr(new_authority);
+    (int wc, _) = parse_std_addr(new_authority);
     throw_unless(error::wrong_workchain, wc == 0);
 
     state::authority_address = new_authority;
@@ -186,9 +204,10 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
 () recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
     (int flags, slice sender, _) = in_msg_full.parse_flags_and_sender();
 
-    ;; Check if the message is bouncable and fail
-    ;; todo bouncED or bouncABLE?
-    throw_if(error::bouncable, flags & 1);
+    ;; Just accept the bounced message
+    if (flags & 1) {
+        return ();
+    }
 
     ;; We only want to support the basechain (id=0)
     (int wc, _) = sender.parse_std_addr();
@@ -208,30 +227,16 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
         return ();
     }
 
-    throw_if(error::insufficient_value, msg_value < deposit_gas_fee);
-
     if (op == op::internal::deposit) {
-        throw_if(error::invalid_evm_recipient, in_msg_body.slice_bits() < size::evm_address);
-
-        int evm_recipient = in_msg_body~load_uint(size::evm_address);
-
-        return handle_deposit(sender, msg_value, evm_recipient);
+        return handle_deposit(msg_value, in_msg_body);
     }
 
     if (op == op::internal::deposit_and_call) {
-        throw_if(error::invalid_evm_recipient, in_msg_body.slice_bits() < size::evm_address);
-
-        int evm_recipient = in_msg_body~load_uint(size::evm_address);
-
-        throw_if(error::invalid_call_data, in_msg_body.slice_refs_empty?());
-
-        cell call_data = in_msg_body~load_ref();
-
-        return handle_deposit_and_call(sender, msg_value, evm_recipient, call_data);
+        return handle_deposit_and_call(msg_value, in_msg_body);
     }
 
-    ;; TODO set authority tx fee
-    ;; https://github.com/zeta-chain/protocol-contracts-ton/issues/9
+    int tx_fee_authority = get_gas_fee_workchain(gas::authority);
+    throw_if(error::insufficient_value, msg_value < tx_fee_authority);
 
     if (op == op::authority::set_deposits_enabled) {
         return handle_set_deposits_enabled(sender, in_msg_body);
@@ -254,66 +259,72 @@ const deposit_gas_fee = 10000000; ;; 0.01 TON
 
 ;; EXTERNAL MESSAGES ===============================
 
-;; Check ECDSA (!) signature of the external message
-(cell) authenticate_external_message(slice message) impure inline_ref {
-    ;; 1: Parse external message
+;; Authenticates the message with ECDSA signature and return its payload.
+cell auth::ecdsa::external(slice message, slice expected_evm_address) inline {
+    ;; 1. Get signature
     slice signature = message~load_bits(size::signature_size);
-    int hash = message~load_uint(size::hash_size);
+
+    ;; 2. Get payload cell
+    throw_if(error::no_signed_payload, message.slice_refs_empty?());
     cell payload = message~load_ref();
 
-    ;; 2: Check hash validity
-    throw_if(error::hash_mismatch, cell_hash(payload) != hash);
+    ;; 3. Calculate payload hash
+    int payload_hash = cell_hash(payload);
 
-    ;; 3: Check signature
-    int sig_check = check_ecdsa_signature(hash, signature, state::tss_address);
+    ;; 4. Check signature
+    int sig_check = check_ecdsa_signature(payload_hash, signature, expected_evm_address);
 
-    ~strdump("check_ecdsa_signature");
-    sig_check~dump();
-
-    throw_if(error::invalid_signature, sig_check != true);
+    if (sig_check != true) {
+        ~strdump("check_ecdsa_signature");
+        sig_check~dump();
+        throw(error::invalid_signature);
+    }
 
     return payload;
 }
 
 ;; Withdraws assets to the recipient
 ;;
-;; handle_withdrawal (int recipient, int amount, int seqno)
-() handle_withdrawal(slice message) impure inline {
-    load_state();
-
-    ;; Authenticate the message
-    slice payload = authenticate_external_message(message).begin_parse();
-
-    ;; Parse the payload
+;; handle_withdrawal (MsgAddr recipient, Coins amount, int seqno)
+() handle_withdrawal(slice payload) impure inline {
+    ;; load the body
     slice recipient = payload~load_msg_addr();
     int amount = payload~load_coins();
     int seqno = payload~load_uint(size::seqno);
 
+    ;; validate the recipient
     (int wc, int recipient_addr) = recipient.parse_std_addr();
     throw_unless(error::wrong_workchain, wc == 0);
+    throw_if(error::invalid_tvm_recipient, equal_slices(recipient, my_address()));
 
     throw_if(error::insufficient_value, amount == 0);
     throw_if(error::invalid_seqno, seqno != (state::seqno + 1));
 
+    int tx_fee = get_gas_fee_workchain(gas::withdraw);
+
     ;; Accept the message, the contract agrees to pay gas fees
     accept_message();
 
-    ;; Sent TON and mutate the state
-    int send_mode = message::mode::ordinary + message::flag::pay_fees_separately;
-    send_simple_message(recipient_addr, amount, begin_cell().end_cell(), send_mode);
-
-    state::total_locked -= amount;
+    state::total_locked -= (amount + tx_fee);
     state::seqno += 1;
+
+    ;; Sent TON and mutate the state
+    int send_mode = message::flag::pay_fees_separately;
+    send_simple_message_non_bounceable(recipient_addr, amount, send_mode);
 
     mutate_state();
 }
 
-;; Input for all external messages
+;; Entry point for all external messages
 () recv_external(slice message) impure {
-    int op = message~load_uint(size::op_code_size);
+    load_state();
+
+    slice payload = auth::ecdsa::external(message, state::tss_address).begin_parse();
+
+    int op = payload~load_uint(size::op_code_size);
 
     if (op == op::external::withdraw) {
-        return handle_withdrawal(message);
+        return handle_withdrawal(payload);
     }
 
     throw(error::unknown_op);
@@ -343,4 +354,32 @@ int seqno() method_id {
     load_state();
 
     return state::seqno;
+}
+
+;; returns tx fee for the specified operation
+int calculate_gas_fee(int op) method_id {
+    if (op == op::internal::deposit) {
+        return get_gas_fee_workchain(gas::deposit);
+    }
+
+    if (op == op::internal::deposit_and_call) {
+        return get_gas_fee_workchain(gas::deposit_and_call);
+    }
+
+    int is_authority_op = (op == op::authority::set_deposits_enabled)
+    | (op == op::authority::update_tss)
+    | (op == op::authority::update_code)
+    | (op == op::authority::update_authority);
+
+    if (is_authority_op) {
+        return get_gas_fee_workchain(gas::authority);
+    }
+
+    if (op == op::external::withdraw) {
+        return get_gas_fee_workchain(gas::withdraw);
+    }
+
+    throw(error::unknown_op);
+
+    return 0;
 }

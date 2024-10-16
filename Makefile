@@ -9,5 +9,8 @@ compile: ## Compile contract
 test: ## Run contract tests
 	npx blueprint test
 
-run: ## Run blueprint scripts
-	npx blueprint run
+deploy: ## Run deployment script
+	npx blueprint run deploy
+
+tx: ## Execute a transaction to the Gateway
+	npx blueprint run transaction

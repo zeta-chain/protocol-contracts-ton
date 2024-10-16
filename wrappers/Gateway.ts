@@ -9,9 +9,10 @@ import {
     Sender,
     SendMode,
     toNano,
+    TupleItemInt,
 } from '@ton/core';
 import { evmAddressToSlice, loadHexStringFromBuffer, signCellECDSA } from '../tests/utils';
-import { Wallet } from 'ethers'; // copied from `gateway.fc`
+import { Wallet as EVMWallet } from 'ethers'; // copied from `gateway.fc`
 
 // copied from `gateway.fc`
 export enum GatewayOp {
@@ -29,9 +30,12 @@ export enum GatewayOp {
 // copied from `errors.fc`
 export enum GatewayError {
     NoIntent = 101,
+    InvalidCallData = 104,
+    InsufficientValue = 106,
     InvalidSignature = 108,
     DepositsDisabled = 110,
     InvalidAuthority = 111,
+    InvalidTVMRecipient = 112,
 }
 
 export type GatewayConfig = {
@@ -54,7 +58,6 @@ export function gatewayConfigToCell(config: GatewayConfig): Cell {
     return beginCell()
         .storeUint(config.depositsEnabled ? 1 : 0, 1) // deposits_enabled
         .storeCoins(0) // total_locked
-        .storeCoins(0) // fees
         .storeUint(0, 32) // seqno
         .storeSlice(tss) // tss_address
         .storeAddress(config.authority) // authority_address
@@ -168,10 +171,27 @@ export class Gateway implements Contract {
 
     async sendAuthorityCommand(provider: ContractProvider, via: Sender, body: Cell) {
         await provider.internal(via, {
-            value: toNano('0.01'),
+            value: toNano('0.1'),
             sendMode: SendMode.PAY_GAS_SEPARATELY,
             body,
         });
+    }
+
+    async sendWithdraw(
+        provider: ContractProvider,
+        signer: EVMWallet,
+        recipient: Address,
+        amount: bigint,
+    ) {
+        const seqno = await this.getNextSeqno(provider);
+        const payload = beginCell()
+            .storeUint(GatewayOp.Withdraw, 32)
+            .storeAddress(recipient)
+            .storeCoins(amount)
+            .storeUint(seqno, 32)
+            .endCell();
+
+        return await this.sendTSSCommand(provider, signer, payload);
     }
 
     /**
@@ -179,10 +199,9 @@ export class Gateway implements Contract {
      *
      * @param provider
      * @param signer
-     * @param op
      * @param payload
      */
-    async sendTSSCommand(provider: ContractProvider, signer: Wallet, op: number, payload: Cell) {
+    async sendTSSCommand(provider: ContractProvider, signer: EVMWallet, payload: Cell) {
         const signature = signCellECDSA(signer, payload);
 
         // SHA-256
@@ -192,11 +211,9 @@ export class Gateway implements Contract {
         }
 
         const message = beginCell()
-            .storeUint(op, 32)
             .storeBits(signature.loadBits(8)) // v
             .storeBits(signature.loadBits(256)) // r
             .storeBits(signature.loadBits(256)) // s
-            .storeBuffer(hash)
             .storeRef(payload)
             .endCell();
 
@@ -229,6 +246,15 @@ export class Gateway implements Contract {
         const response = await provider.get('seqno', []);
 
         return response.stack.readNumber();
+    }
+
+    async getTxFee(provider: ContractProvider, op: GatewayOp): Promise<bigint> {
+        const v = BigInt(op.valueOf());
+        const bigOp: TupleItemInt = { type: 'int', value: v };
+
+        const response = await provider.get('calculate_gas_fee', [bigOp]);
+
+        return response.stack.readBigNumber();
     }
 
     private async getNextSeqno(provider: ContractProvider): Promise<number> {
