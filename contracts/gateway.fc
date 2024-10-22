@@ -32,7 +32,7 @@ const op::authority::update_authority = 204;
 const gas::deposit = 10000;
 const gas::deposit_and_call = 13000;
 const gas::authority = 20000;
-const gas::withdraw = 17000;
+const gas::withdraw = 17500;
 
 ;; PARSING =========================================
 
@@ -302,17 +302,20 @@ cell auth::ecdsa::external(slice message, slice expected_evm_address) inline {
 
     int tx_fee = get_gas_fee_workchain(gas::withdraw);
 
+    throw_if(error::insufficient_value, state::total_locked < (amount + tx_fee));
+
     ;; Accept the message, the contract agrees to pay gas fees
     accept_message();
 
     state::total_locked -= (amount + tx_fee);
     state::seqno += 1;
 
+    mutate_state();
+    commit();
+
     ;; Sent TON and mutate the state
     int send_mode = message::flag::pay_fees_separately;
     send_simple_message_non_bounceable(recipient_addr, amount, send_mode);
-
-    mutate_state();
 }
 
 ;; Entry point for all external messages

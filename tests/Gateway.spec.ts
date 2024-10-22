@@ -618,6 +618,35 @@ describe('Gateway', () => {
         }
     });
 
+    it('should fail a withdrawal if amount is more than locked', async () => {
+        // ARRANGE
+        // Given some funds in the gateway
+        await gateway.sendDeposit(
+            deployer.getSender(),
+            toNano('10'),
+            '0x95222290dd7278aa3ddd389cc1e1d165cc4bafe5',
+        );
+
+        // Given a receiver that is NOT yet deployed
+        let receiver = await blockchain.treasury('receiver', { predeploy: false });
+
+        const receiverState = await blockchain.getContract(receiver.address);
+        expect(receiverState.accountState?.type).toEqual('uninit');
+
+        // Given a withdrawal amount
+        const withdrawAmount = toNano('500');
+
+        // ACT & ASSERT
+        // Withdraw TON and expect an error
+        try {
+            // Sign with some random wallet
+            await gateway.sendWithdraw(tssWallet, receiver.address, withdrawAmount);
+        } catch (e: any) {
+            const exitCode = e?.exitCode as number;
+            expect(exitCode).toEqual(gw.GatewayError.InsufficientValue);
+        }
+    });
+
     it('should enable or disable deposits', async () => {
         // ARRANGE
         // Given a sender

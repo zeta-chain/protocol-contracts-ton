@@ -24,7 +24,16 @@ export async function run(p: NetworkProvider) {
     const gw = await open(p);
 
     // can be extended in the future
-    const commands = ['deposit', 'depositAndCall', 'donate', 'send', 'withdraw', 'getState'];
+    const commands = [
+        'deposit',
+        'depositAndCall',
+        'donate',
+        'send',
+        'withdraw',
+        'getState',
+        'getSeqno',
+    ];
+
     const cmd = await p.ui().choose('Select command', commands, (cmd) => cmd);
 
     switch (cmd) {
@@ -47,7 +56,9 @@ export async function run(p: NetworkProvider) {
                 authority: state.authority.toRawString(),
             });
             return;
-
+        case 'getSeqno':
+            console.log('Gateway seqno:', await gw.getSeqno());
+            return;
         default:
             console.log(`Unknown command ${cmd}`);
             return;
