@@ -298,7 +298,7 @@ cell auth::ecdsa::external(slice message, slice expected_evm_address) inline {
     throw_if(error::invalid_tvm_recipient, equal_slices(recipient, my_address()));
 
     throw_if(error::insufficient_value, amount == 0);
-    throw_if(error::invalid_seqno, seqno != (state::seqno + 1));
+    throw_if(error::invalid_seqno, seqno != state::seqno);
 
     int tx_fee = get_gas_fee_workchain(gas::withdraw);
 

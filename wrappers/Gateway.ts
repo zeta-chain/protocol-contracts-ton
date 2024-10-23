@@ -183,7 +183,7 @@ export class Gateway implements Contract {
         recipient: Address,
         amount: bigint,
     ) {
-        const seqno = await this.getNextSeqno(provider);
+        const seqno = await this.getSeqno(provider);
         const payload = beginCell()
             .storeUint(GatewayOp.Withdraw, 32)
             .storeAddress(recipient)
@@ -255,10 +255,6 @@ export class Gateway implements Contract {
         const response = await provider.get('calculate_gas_fee', [bigOp]);
 
         return response.stack.readBigNumber();
-    }
-
-    private async getNextSeqno(provider: ContractProvider): Promise<number> {
-        return (await this.getSeqno(provider)) + 1;
     }
 }
 
