@@ -302,6 +302,7 @@ cell auth::ecdsa::external(slice message, slice expected_evm_address) inline {
 
     int tx_fee = get_gas_fee_workchain(gas::withdraw);
 
+    ;; edge-case: make sure gw has enough coins when having low funds
     throw_if(error::insufficient_value, state::total_locked < (amount + tx_fee));
 
     ;; Accept the message, the contract agrees to pay gas fees
