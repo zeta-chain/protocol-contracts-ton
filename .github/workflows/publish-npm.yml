@@ -26,22 +26,17 @@ jobs:
       - name: Build
         run: yarn build
 
-      - name: List
+      - name: Determine NPM Tag
+        id: determine-npm-tag
         run: |
-          ls -la
-          cat build/Gateway.compiled.json
+          VERSION_TAG="${{ github.event.inputs.version }}"
+          if [[ $VERSION_TAG == *"-"* ]]; then
+            echo "NPM_TAG=${VERSION_TAG#*-}" >> $GITHUB_ENV
+          else
+            echo "NPM_TAG=latest" >> $GITHUB_ENV
+          fi
 
-      # - name: Determine NPM Tag
-      #   id: determine-npm-tag
-      #   run: |
-      #     VERSION_TAG="${{ github.event.inputs.version }}"
-      #     if [[ $VERSION_TAG == *"-"* ]]; then
-      #       echo "NPM_TAG=${VERSION_TAG#*-}" >> $GITHUB_ENV
-      #     else
-      #       echo "NPM_TAG=latest" >> $GITHUB_ENV
-      #     fi
-
-      # - name: Publish to NPM
-      #   run: yarn publish --new-version ${{ github.event.inputs.version }} --tag ${{ env.NPM_TAG }} --no-git-tag-version
-      #   env:
-      #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish to NPM
+        run: yarn publish --new-version ${{ github.event.inputs.version }} --tag ${{ env.NPM_TAG }} --no-git-tag-version
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
