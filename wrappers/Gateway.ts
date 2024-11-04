@@ -10,9 +10,60 @@ import {
     SendMode,
     toNano,
     TupleItemInt,
+    Slice,
 } from '@ton/core';
-import { evmAddressToSlice, loadHexStringFromBuffer, signCellECDSA } from '../tests/utils';
-import { Wallet as EVMWallet } from 'ethers'; // copied from `gateway.fc`
+import { Wallet } from 'ethers'; // copied from `gateway.fc`
+
+export function evmAddressToSlice(address: string): Slice {
+    if (address.length !== 42) {
+        throw new Error(`Invalid EVM address: ${address}`);
+    }
+
+    // Remove the '0x' prefix
+    const hexString = address.slice(2);
+
+    // Convert to Buffer
+    const buffer = Buffer.from(hexString, 'hex');
+    if (buffer.length !== 20) {
+        throw new Error(`Invalid Buffer length: ${buffer.length}`);
+    }
+
+    return beginCell().storeBuffer(buffer).asSlice();
+}
+
+// loads Slice to hex string `0x...`
+export function loadHexStringFromSlice(s: Slice, bytes: number): string {
+    return loadHexStringFromBuffer(s.loadBuffer(bytes));
+}
+
+export function loadHexStringFromBuffer(b: Buffer): string {
+    const hex = b.toString('hex');
+
+    return `0x${hex}`;
+}
+
+/**
+ * Signs a cell with secp256k1 signature into a Slice (65 bytes)
+ * @param signer
+ * @param cell
+ * @param log
+ */
+export function signCellECDSA(signer: Wallet, cell: Cell, log: boolean = false): Slice {
+    const hash = cell.hash();
+    const sig = signer.signingKey.sign(hash);
+
+    // https://docs.ton.org/learn/tvm-instructions/instructions
+    //
+    // `ECRECOVER` Recovers public key from signature...
+    // Takes 32-byte hash as uint256 hash; 65-byte signature as uint8 v and uint256 r, s.
+    const [v, r, s] = [Number(sig.v), BigInt(sig.r), BigInt(sig.s)];
+
+    if (log) {
+        console.log('signCellECDSA', { v, r, s });
+    }
+
+    return beginCell().storeUint(v, 8).storeUint(r, 256).storeUint(s, 256).asSlice();
+}
 
 // copied from `gateway.fc`
 export enum GatewayOp {
@@ -179,7 +230,7 @@ export class Gateway implements Contract {
 
     async sendWithdraw(
         provider: ContractProvider,
-        signer: EVMWallet,
+        signer: Wallet,
         recipient: Address,
         amount: bigint,
     ) {
@@ -201,7 +252,7 @@ export class Gateway implements Contract {
      * @param signer
      * @param payload
      */
-    async sendTSSCommand(provider: ContractProvider, signer: EVMWallet, payload: Cell) {
+    async sendTSSCommand(provider: ContractProvider, signer: Wallet, payload: Cell) {
         const signature = signCellECDSA(signer, payload);
 
         // SHA-256
