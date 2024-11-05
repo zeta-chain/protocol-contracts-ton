@@ -12,7 +12,7 @@ import {
     TupleItemInt,
     Slice,
 } from '@ton/core';
-import { Wallet } from 'ethers'; // copied from `gateway.fc`
+import { Wallet as EVMWallet } from 'ethers';
 
 export function evmAddressToSlice(address: string): Slice {
     if (address.length !== 42) {
@@ -48,7 +48,7 @@ export function loadHexStringFromBuffer(b: Buffer): string {
  * @param cell
  * @param log
  */
-export function signCellECDSA(signer: Wallet, cell: Cell, log: boolean = false): Slice {
+export function signCellECDSA(signer: EVMWallet, cell: Cell, log: boolean = false): Slice {
     const hash = cell.hash();
     const sig = signer.signingKey.sign(hash);
 
@@ -230,7 +230,7 @@ export class Gateway implements Contract {
 
     async sendWithdraw(
         provider: ContractProvider,
-        signer: Wallet,
+        signer: EVMWallet,
         recipient: Address,
         amount: bigint,
     ) {
@@ -252,7 +252,7 @@ export class Gateway implements Contract {
      * @param signer
      * @param payload
      */
-    async sendTSSCommand(provider: ContractProvider, signer: Wallet, payload: Cell) {
+    async sendTSSCommand(provider: ContractProvider, signer: EVMWallet, payload: Cell) {
         const signature = signCellECDSA(signer, payload);
 
         // SHA-256
