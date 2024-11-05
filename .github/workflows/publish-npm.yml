@@ -1,8 +1,6 @@
 name: Publish to npm
 
 on:
-  pull_request:
-  push:
   release:
     types: [published]
 
