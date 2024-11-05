@@ -14,57 +14,6 @@ import {
 } from '@ton/core';
 import { Wallet as EVMWallet } from 'ethers';
 
-export function evmAddressToSlice(address: string): Slice {
-    if (address.length !== 42) {
-        throw new Error(`Invalid EVM address: ${address}`);
-    }
-
-    // Remove the '0x' prefix
-    const hexString = address.slice(2);
-
-    // Convert to Buffer
-    const buffer = Buffer.from(hexString, 'hex');
-    if (buffer.length !== 20) {
-        throw new Error(`Invalid Buffer length: ${buffer.length}`);
-    }
-
-    return beginCell().storeBuffer(buffer).asSlice();
-}
-
-// loads Slice to hex string `0x...`
-export function loadHexStringFromSlice(s: Slice, bytes: number): string {
-    return loadHexStringFromBuffer(s.loadBuffer(bytes));
-}
-
-export function loadHexStringFromBuffer(b: Buffer): string {
-    const hex = b.toString('hex');
-
-    return `0x${hex}`;
-}
-
-/**
- * Signs a cell with secp256k1 signature into a Slice (65 bytes)
- * @param signer
- * @param cell
- * @param log
- */
-export function signCellECDSA(signer: EVMWallet, cell: Cell, log: boolean = false): Slice {
-    const hash = cell.hash();
-    const sig = signer.signingKey.sign(hash);
-
-    // https://docs.ton.org/learn/tvm-instructions/instructions
-    //
-    // `ECRECOVER` Recovers public key from signature...
-    // Takes 32-byte hash as uint256 hash; 65-byte signature as uint8 v and uint256 r, s.
-    const [v, r, s] = [Number(sig.v), BigInt(sig.r), BigInt(sig.s)];
-
-    if (log) {
-        console.log('signCellECDSA', { v, r, s });
-    }
-
-    return beginCell().storeUint(v, 8).storeUint(r, 256).storeUint(s, 256).asSlice();
-}
-
 // copied from `gateway.fc`
 export enum GatewayOp {
     Donate = 100,
@@ -326,4 +275,55 @@ export function parseDepositLog(body: Cell): DepositLog {
 function newIntent(op: GatewayOp): Builder {
     // op code, query id
     return beginCell().storeUint(op, 32).storeUint(0, 64);
+}
+
+export function evmAddressToSlice(address: string): Slice {
+    if (address.length !== 42) {
+        throw new Error(`Invalid EVM address: ${address}`);
+    }
+
+    // Remove the '0x' prefix
+    const hexString = address.slice(2);
+
+    // Convert to Buffer
+    const buffer = Buffer.from(hexString, 'hex');
+    if (buffer.length !== 20) {
+        throw new Error(`Invalid Buffer length: ${buffer.length}`);
+    }
+
+    return beginCell().storeBuffer(buffer).asSlice();
+}
+
+// loads Slice to hex string `0x...`
+export function loadHexStringFromSlice(s: Slice, bytes: number): string {
+    return loadHexStringFromBuffer(s.loadBuffer(bytes));
+}
+
+export function loadHexStringFromBuffer(b: Buffer): string {
+    const hex = b.toString('hex');
+
+    return `0x${hex}`;
+}
+
+/**
+ * Signs a cell with secp256k1 signature into a Slice (65 bytes)
+ * @param signer
+ * @param cell
+ * @param log
+ */
+export function signCellECDSA(signer: EVMWallet, cell: Cell, log: boolean = false): Slice {
+    const hash = cell.hash();
+    const sig = signer.signingKey.sign(hash);
+
+    // https://docs.ton.org/learn/tvm-instructions/instructions
+    //
+    // `ECRECOVER` Recovers public key from signature...
+    // Takes 32-byte hash as uint256 hash; 65-byte signature as uint8 v and uint256 r, s.
+    const [v, r, s] = [Number(sig.v), BigInt(sig.r), BigInt(sig.s)];
+
+    if (log) {
+        console.log('signCellECDSA', { v, r, s });
+    }
+
+    return beginCell().storeUint(v, 8).storeUint(r, 256).storeUint(s, 256).asSlice();
 }
