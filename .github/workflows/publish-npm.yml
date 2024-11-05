@@ -35,6 +35,7 @@ jobs:
           fi
 
       - name: Publish to NPM
-        run: yarn publish --new-version ${{ github.event.inputs.version }} --tag ${{ env.NPM_TAG }} --no-git-tag-version
+        run: |
+          yarn publish --new-version ${{ github.event.inputs.version }} --tag ${{ env.NPM_TAG }} --no-git-tag-version
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
