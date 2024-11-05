@@ -18,15 +18,15 @@ jobs:
         with:
           node-version: "21.1.0"
 
-      - name: NPM install
-        run: npm install
+      - name: Install Dependencies
+        run: yarn
 
       - name: Run Prettier
-        run: npm run prettier
+        run: yarn prettier
 
       - name: Run Tests
         run: |
-          npm run test | tee test_output.txt
+          yarn test | tee test_output.txt
 
       - name: Find Gas Report
         id: find_report
