@@ -1,5 +1,5 @@
 {
-    "name": "@zetachain/protocol-contract",
+    "name": "@zetachain/protocol-contracts-ton",
     "version": "0.0.0-set-on-publish",
     "author": "zetachain",
     "license": "MIT",
@@ -9,6 +9,11 @@
         "prettier": "prettier -c .",
         "test": "jest --verbose"
     },
+    "main": "dist/index.js",
+    "files": [
+        "dist",
+        "build"
+    ],
     "devDependencies": {
         "@ton/blueprint": "^0.24.0",
         "@ton/core": "~0",
@@ -26,5 +31,6 @@
     },
     "dependencies": {
         "ethers": "^6.13.2"
-    }
+    },
+    "packageManager": "yarn@1.22.21+sha1.1959a18351b811cdeedbd484a8f86c3cc3bbaf72"
 }
