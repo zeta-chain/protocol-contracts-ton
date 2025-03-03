@@ -1,26 +1,25 @@
-import { NetworkProvider } from "@ton/blueprint";
-import { Gateway } from "../wrappers/Gateway";
-import { formatCoin } from "../tests/utils";
-import { Address } from "@ton/core";
+import { NetworkProvider } from '@ton/blueprint';
+import { Gateway } from '../wrappers/Gateway';
+import { formatCoin } from '../tests/utils';
+import { Address } from '@ton/core';
 
 const GATEWAY_ACCOUNT_ID_TESTNET = Address.parse(
-    '0:7a4d41496726aadb227cf4d313c95912f1fe6cc742c18ebde306ff59881d8816'
-)
+    '0:7a4d41496726aadb227cf4d313c95912f1fe6cc742c18ebde306ff59881d8816',
+);
 
 export async function run(provider: NetworkProvider) {
     const isTestnet = provider.network() === 'testnet';
 
-    const address = await provider.ui().inputAddress(
-        'Enter Gateway address',
-        isTestnet ? GATEWAY_ACCOUNT_ID_TESTNET : undefined,
-    );
+    const address = await provider
+        .ui()
+        .inputAddress('Enter Gateway address', isTestnet ? GATEWAY_ACCOUNT_ID_TESTNET : undefined);
 
     const gw = await provider.open(Gateway.createFromAddress(address));
 
     const [state, balance, seqno] = await Promise.all([
         gw.getGatewayState(),
         gw.getBalance(),
-        gw.getSeqno()
+        gw.getSeqno(),
     ]);
 
     console.log('Gateway', {
@@ -32,7 +31,7 @@ export async function run(provider: NetworkProvider) {
         seqno: seqno,
     });
 
-    console.log('Explorer link:')
+    console.log('Explorer link:');
     console.log(addressLink(address, isTestnet));
 }
 
@@ -41,5 +40,4 @@ function addressLink(address: Address, isTestnet: boolean): string {
     return isTestnet
         ? `https://testnet.tonscan.org/address/${raw}`
         : `https://tonscan.org/address/${raw}`;
-
 }
