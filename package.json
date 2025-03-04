@@ -7,6 +7,7 @@
         "start": "blueprint run",
         "build": "blueprint build",
         "prettier": "prettier -c .",
+        "prettier-fix": "prettier --write -c .",
         "test": "jest --verbose"
     },
     "main": "dist/index.js",
