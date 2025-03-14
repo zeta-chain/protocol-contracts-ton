@@ -1,4 +1,5 @@
 import { beginCell, Builder, Cell } from '@ton/core';
+import * as ethers from 'ethers';
 
 /**
  * stringHexToCell converts a hex-string to a TON Cell object encoded in "snake format"
@@ -7,12 +8,11 @@ import { beginCell, Builder, Cell } from '@ton/core';
  * @see https://docs.ton.org/v3/guidelines/dapps/cookbook#writing-comments-long-strings-in-snake-format
  */
 export function hexStringToCell(input: string): Cell {
-    input = input.startsWith('0x') ? input.slice(2) : input;
-    if (!/^[0-9a-fA-F]*$/.test(input)) {
-        throw new Error('Invalid hex string provided');
+    if (!ethers.isHexString(input)) {
+        throw new Error('String should be a hex string (0x...)');
     }
 
-    const buf = Buffer.from(input, 'hex');
+    const buf = Buffer.from(input.substring(2), 'hex');
 
     let builder = beginCell();
 
