@@ -1,20 +1,15 @@
 import { NetworkProvider } from '@ton/blueprint';
 import { Gateway } from '../wrappers/Gateway';
 import { formatCoin } from '../tests/utils';
+import * as accounts from '../tools/accounts';
 import { Address } from '@ton/core';
-
-const GATEWAY_ACCOUNT_ID_TESTNET = Address.parse(
-    '0:7a4d41496726aadb227cf4d313c95912f1fe6cc742c18ebde306ff59881d8816',
-);
 
 export async function run(provider: NetworkProvider) {
     const isTestnet = provider.network() === 'testnet';
 
-    const address = await provider
-        .ui()
-        .inputAddress('Enter Gateway address', isTestnet ? GATEWAY_ACCOUNT_ID_TESTNET : undefined);
+    const gwAddress = await accounts.inputGateway(provider);
 
-    const gw = await provider.open(Gateway.createFromAddress(address));
+    const gw = await provider.open(Gateway.createFromAddress(gwAddress));
 
     const [state, balance, seqno] = await Promise.all([
         gw.getGatewayState(),
@@ -32,7 +27,7 @@ export async function run(provider: NetworkProvider) {
     });
 
     console.log('Explorer link:');
-    console.log(addressLink(address, isTestnet));
+    console.log(addressLink(gwAddress, isTestnet));
 }
 
 function addressLink(address: Address, isTestnet: boolean): string {

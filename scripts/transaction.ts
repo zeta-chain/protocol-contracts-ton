@@ -1,15 +1,14 @@
-import { Address, OpenedContract, SendMode, toNano } from '@ton/core';
-import { Gateway } from '../wrappers/Gateway';
 import { NetworkProvider } from '@ton/blueprint';
-import { stringToCell } from '@ton/core/dist/boc/utils/strings';
+import { OpenedContract, SendMode, toNano } from '@ton/core';
 import { ethers } from 'ethers';
 import { formatCoin } from '../tests/utils';
+import * as accounts from '../tools/accounts';
+import * as cell from '../tools/cell';
+import { Gateway } from '../wrappers/Gateway';
 
 async function open(p: NetworkProvider): Promise<OpenedContract<Gateway>> {
-    const defaultAddr = process.env.GW_ADDRESS || '';
-    const addr = Address.parse(await ask(p, 'Enter Gateway address', defaultAddr));
-
-    const gw = Gateway.createFromAddress(addr);
+    const gwAddress = await accounts.inputGateway(p);
+    const gw = Gateway.createFromAddress(gwAddress);
 
     const isDeployed = await p.isContractDeployed(gw.address);
     if (!isDeployed) {
@@ -65,21 +64,21 @@ export async function run(p: NetworkProvider) {
     }
 }
 
-const sampleETHAddress = '0xA1eb8D65b765D259E7520B791bc4783AdeFDd998';
-
 async function deposit(p: NetworkProvider, gw: OpenedContract<Gateway>) {
-    const recipient = await ask(p, 'enter zevm recipient address', sampleETHAddress);
+    const recipient = await ask(p, 'enter zevm recipient address', '');
     const amount = await ask(p, 'enter amount to deposit', '1');
 
     await gw.sendDeposit(p.sender(), toNano(amount), recipient);
 }
 
 async function depositAndCall(p: NetworkProvider, gw: OpenedContract<Gateway>) {
-    const recipient = await ask(p, 'enter zevm recipient address', sampleETHAddress);
+    const recipient = await ask(p, 'enter zevm recipient address', '');
     const amount = await ask(p, 'enter amount to deposit', '1');
-    const callData = await ask(p, 'enter call data', '');
 
-    await gw.sendDepositAndCall(p.sender(), toNano(amount), recipient, stringToCell(callData));
+    const callDataRaw = await ask(p, 'enter ABI-encoded call data (e.g. 0x0000ABC123...)', '');
+    const callData = cell.hexStringToCell(callDataRaw);
+
+    await gw.sendDepositAndCall(p.sender(), toNano(amount), recipient, callData);
 }
 
 async function donate(p: NetworkProvider, gw: OpenedContract<Gateway>) {
