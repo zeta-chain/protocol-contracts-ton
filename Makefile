@@ -16,6 +16,9 @@ tx: ## Execute a transaction to the Gateway
 debug: ## Outputs Gateway's debug info
 	npx blueprint run debug
 
+lint: ## Lint the code
+	npm run prettier
+
 fmt: ## Format the code
 	npm run prettier-fix
 

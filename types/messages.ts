@@ -11,7 +11,7 @@ function newIntent(op: GatewayOp): Builder {
  * Creates a donation body for the Gateway contract
  * @returns
  */
-export function donationBody(): Cell {
+export function messageDonation(): Cell {
     return newIntent(GatewayOp.Donate).endCell();
 }
 
@@ -20,7 +20,7 @@ export function donationBody(): Cell {
  * @param zevmRecipient - EVM recipient address
  * @returns Cell
  */
-export function depositBody(zevmRecipient: string | bigint): Cell {
+export function messageDeposit(zevmRecipient: string | bigint): Cell {
     // accept bigInt or hex string
     if (typeof zevmRecipient === 'string') {
         zevmRecipient = BigInt(zevmRecipient);
@@ -37,7 +37,7 @@ export function depositBody(zevmRecipient: string | bigint): Cell {
  * @param callData - Call data
  * @returns Cell
  */
-export function depositAndCallBody(zevmRecipient: string | bigint, callData: Cell): Cell {
+export function messageDepositAndCall(zevmRecipient: string | bigint, callData: Cell): Cell {
     // accept bigInt or hex string
     if (typeof zevmRecipient === 'string') {
         zevmRecipient = BigInt(zevmRecipient);
@@ -49,25 +49,25 @@ export function depositAndCallBody(zevmRecipient: string | bigint, callData: Cel
         .endCell();
 }
 
-export function depositsEnabledBody(enabled: boolean): Cell {
+export function messageDepositsEnabled(enabled: boolean): Cell {
     return newIntent(GatewayOp.SetDepositsEnabled).storeBit(enabled).endCell();
 }
 
-export function updateTSSBody(newTSS: string): Cell {
+export function messageUpdateTSS(newTSS: string): Cell {
     const address = evmAddressToSlice(newTSS);
 
     return newIntent(GatewayOp.UpdateTSS).storeSlice(address).endCell();
 }
 
-export function updateCodeBody(code: Cell): Cell {
+export function messageUpdateCode(code: Cell): Cell {
     return newIntent(GatewayOp.UpdateCode).storeRef(code).endCell();
 }
 
-export function updateAuthorityBody(authority: Address): Cell {
+export function messageUpdateAuthority(authority: Address): Cell {
     return newIntent(GatewayOp.UpdateAuthority).storeAddress(authority).endCell();
 }
 
-export function withdrawBody(seqno: number, recipient: Address, amount: bigint): Cell {
+export function messageWithdraw(seqno: number, recipient: Address, amount: bigint): Cell {
     return beginCell()
         .storeUint(GatewayOp.Withdraw, 32)
         .storeAddress(recipient)
@@ -84,7 +84,7 @@ export function withdrawBody(seqno: number, recipient: Address, amount: bigint):
  * @param payload - Payload
  * @returns Cell
  */
-export function externalMessage(signature: Slice, payload: Cell): Cell {
+export function messageExternal(signature: Slice, payload: Cell): Cell {
     // 1b, 32b, 32b
     const [v, r, s] = [signature.loadBits(8), signature.loadBits(256), signature.loadBits(256)];
 

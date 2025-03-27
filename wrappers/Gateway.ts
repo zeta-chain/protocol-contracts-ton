@@ -46,7 +46,7 @@ export class Gateway implements Contract {
         value: bigint,
         zevmRecipient: string | bigint,
     ) {
-        const body = types.depositBody(zevmRecipient);
+        const body = types.messageDeposit(zevmRecipient);
         const sendMode = SendMode.PAY_GAS_SEPARATELY;
 
         await provider.internal(via, { value, sendMode, body });
@@ -59,36 +59,36 @@ export class Gateway implements Contract {
         zevmRecipient: string | bigint,
         callData: Cell,
     ) {
-        const body = types.depositAndCallBody(zevmRecipient, callData);
+        const body = types.messageDepositAndCall(zevmRecipient, callData);
         const sendMode = SendMode.PAY_GAS_SEPARATELY;
 
         await provider.internal(via, { value, sendMode, body });
     }
 
     async sendDonation(provider: ContractProvider, via: Sender, value: bigint) {
-        const body = types.donationBody();
+        const body = types.messageDonation();
         const sendMode = SendMode.PAY_GAS_SEPARATELY;
 
         await provider.internal(via, { value, sendMode, body });
     }
 
     async sendEnableDeposits(provider: ContractProvider, via: Sender, enabled: boolean) {
-        const body = types.depositsEnabledBody(enabled);
+        const body = types.messageDepositsEnabled(enabled);
         await this.sendAuthorityCommand(provider, via, body);
     }
 
     async sendUpdateTSS(provider: ContractProvider, via: Sender, newTSS: string) {
-        const body = types.updateTSSBody(newTSS);
+        const body = types.messageUpdateTSS(newTSS);
         await this.sendAuthorityCommand(provider, via, body);
     }
 
     async sendUpdateCode(provider: ContractProvider, via: Sender, code: Cell) {
-        const body = types.updateCodeBody(code);
+        const body = types.messageUpdateCode(code);
         await this.sendAuthorityCommand(provider, via, body);
     }
 
     async sendUpdateAuthority(provider: ContractProvider, via: Sender, authority: Address) {
-        const body = types.updateAuthorityBody(authority);
+        const body = types.messageUpdateAuthority(authority);
         await this.sendAuthorityCommand(provider, via, body);
     }
 
@@ -107,7 +107,7 @@ export class Gateway implements Contract {
         amount: bigint,
     ) {
         const seqno = await this.getSeqno(provider);
-        const body = types.withdrawBody(seqno, recipient, amount);
+        const body = types.messageWithdraw(seqno, recipient, amount);
 
         return await this.sendTSSCommand(provider, signer, body);
     }
@@ -121,7 +121,7 @@ export class Gateway implements Contract {
      */
     async sendTSSCommand(provider: ContractProvider, signer: ethers.Wallet, payload: Cell) {
         const signature = crypto.ecdsaSignCell(signer, payload);
-        const message = types.externalMessage(signature, payload);
+        const message = types.messageExternal(signature, payload);
 
         await provider.external(message);
     }
