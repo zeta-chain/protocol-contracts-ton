@@ -2,12 +2,12 @@ import { NetworkProvider } from '@ton/blueprint';
 import { OpenedContract, SendMode, toNano } from '@ton/core';
 import { ethers } from 'ethers';
 import { formatCoin } from '../tests/utils';
-import * as accounts from '../tools/accounts';
-import * as cell from '../tools/cell';
 import { Gateway } from '../wrappers/Gateway';
+import * as types from '../types';
+import * as common from './common';
 
 async function open(p: NetworkProvider): Promise<OpenedContract<Gateway>> {
-    const gwAddress = await accounts.inputGateway(p);
+    const gwAddress = await common.inputGateway(p);
     const gw = Gateway.createFromAddress(gwAddress);
 
     const isDeployed = await p.isContractDeployed(gw.address);
@@ -76,7 +76,7 @@ async function depositAndCall(p: NetworkProvider, gw: OpenedContract<Gateway>) {
     const amount = await ask(p, 'enter amount to deposit', '1');
 
     const callDataRaw = await ask(p, 'enter ABI-encoded call data (e.g. 0x0000ABC123...)', '');
-    const callData = cell.hexStringToCell(callDataRaw);
+    const callData = types.hexStringToCell(callDataRaw);
 
     await gw.sendDepositAndCall(p.sender(), toNano(amount), recipient, callData);
 }

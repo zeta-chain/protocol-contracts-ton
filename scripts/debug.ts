@@ -1,13 +1,13 @@
 import { NetworkProvider } from '@ton/blueprint';
 import { Gateway } from '../wrappers/Gateway';
 import { formatCoin } from '../tests/utils';
-import * as accounts from '../tools/accounts';
 import { Address } from '@ton/core';
+import * as common from './common';
 
 export async function run(provider: NetworkProvider) {
     const isTestnet = provider.network() === 'testnet';
 
-    const gwAddress = await accounts.inputGateway(provider);
+    const gwAddress = await common.inputGateway(provider);
 
     const gw = await provider.open(Gateway.createFromAddress(gwAddress));
 
