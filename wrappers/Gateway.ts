@@ -135,7 +135,7 @@ export class Gateway implements Contract {
     async getGatewayState(provider: ContractProvider): Promise<types.GatewayState> {
         const response = await provider.get('query_state', []);
 
-        return types.decodeGatewayState(response.stack);
+        return types.gatewayStateFromStack(response.stack);
     }
 
     async getSeqno(provider: ContractProvider): Promise<number> {

@@ -1,5 +1,5 @@
-import { Address, beginCell, Cell } from '@ton/core';
-import { evmAddressToSlice } from './utils';
+import { Address, beginCell, Cell, TupleReader } from '@ton/core';
+import { bufferToHexString, evmAddressToSlice } from './utils';
 
 // copied from `gateway.fc`
 export enum GatewayOp {
@@ -31,21 +31,6 @@ export type GatewayConfig = {
     authority: Address;
 };
 
-export type GatewayState = {
-    depositsEnabled: boolean;
-    valueLocked: bigint;
-    tss: string;
-    authority: Address;
-};
-
-// outbound message that is send from the Gateway to "void"
-// Note that is doesn't contain call data because it would use more gas.
-// Calldata should be parsed from the incoming internal message of the tx.
-export type DepositLog = {
-    amount: bigint;
-    depositFee: bigint;
-};
-
 // Initial state of the contract during deployment
 export function gatewayConfigToCell(config: GatewayConfig): Cell {
     const tss = evmAddressToSlice(config.tss);
@@ -57,4 +42,38 @@ export function gatewayConfigToCell(config: GatewayConfig): Cell {
         .storeSlice(tss) // tss_address
         .storeAddress(config.authority) // authority_address
         .endCell();
+}
+
+export type GatewayState = {
+    depositsEnabled: boolean;
+    valueLocked: bigint;
+    tss: string;
+    authority: Address;
+};
+
+// result of 'query_state' getter
+export function gatewayStateFromStack(stack: TupleReader): GatewayState {
+    return {
+        depositsEnabled: stack.readBoolean(),
+        valueLocked: stack.readBigNumber(),
+        tss: bufferToHexString(stack.readBuffer()),
+        authority: stack.readAddress(),
+    };
+}
+
+// outbound message that is sent from the Gateway to "void"
+// Note that is doesn't contain call data because it would use more gas.
+// Calldata should be parsed from the incoming internal message of the tx.
+export type DepositLog = {
+    amount: bigint;
+    depositFee: bigint;
+};
+
+export function depositLogFromCell(body: Cell): DepositLog {
+    const cs = body.beginParse();
+
+    const amount = cs.loadCoins();
+    const depositFee = cs.loadCoins();
+
+    return { amount, depositFee };
 }

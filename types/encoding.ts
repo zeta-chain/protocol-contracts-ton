@@ -90,22 +90,3 @@ export function externalMessage(signature: Slice, payload: Cell): Cell {
 
     return beginCell().storeBits(v).storeBits(r).storeBits(s).storeRef(payload).endCell();
 }
-
-// result of 'query_state' getter
-export function decodeGatewayState(stack: TupleReader): GatewayState {
-    return {
-        depositsEnabled: stack.readBoolean(),
-        valueLocked: stack.readBigNumber(),
-        tss: bufferToHexString(stack.readBuffer()),
-        authority: stack.readAddress(),
-    };
-}
-
-export function decodeDepositLog(body: Cell): DepositLog {
-    const cs = body.beginParse();
-
-    const amount = cs.loadCoins();
-    const depositFee = cs.loadCoins();
-
-    return { amount, depositFee };
-}
