@@ -1,4 +1,4 @@
-import { Address, beginCell, Builder, Cell, TupleReader } from '@ton/core';
+import { Address, beginCell, Builder, Cell, Slice, TupleReader } from '@ton/core';
 import { DepositLog, GatewayOp, GatewayState } from './types';
 import { bufferToHexString, evmAddressToSlice, sliceToHexString } from './utils';
 
@@ -74,6 +74,21 @@ export function withdrawBody(seqno: number, recipient: Address, amount: bigint):
         .storeCoins(amount)
         .storeUint(seqno, 32)
         .endCell();
+}
+
+/**
+ * Creates an external message for the Gateway contract. Used for broadcasting withdrawals.
+ * In reality, this part is implemented in Zeta via TSS ceremony. However this is useful in
+ * local/testing environment, where TSS can be mocked as simple ECDSA private key
+ * @param signature - ECDSA Signature as ton/core Slice of (V|R|S)
+ * @param payload - Payload
+ * @returns Cell
+ */
+export function externalMessage(signature: Slice, payload: Cell): Cell {
+    // 1b, 32b, 32b
+    const [v, r, s] = [signature.loadBits(8), signature.loadBits(256), signature.loadBits(256)];
+
+    return beginCell().storeBits(v).storeBits(r).storeBits(s).storeRef(payload).endCell();
 }
 
 // result of 'query_state' getter

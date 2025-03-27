@@ -13,6 +13,7 @@ import {
     Slice,
 } from '@ton/core';
 import * as types from '../types';
+import * as crypto from '../crypto/ecdsa';
 import * as ethers from 'ethers';
 
 export class Gateway implements Contract {
@@ -119,20 +120,8 @@ export class Gateway implements Contract {
      * @param payload
      */
     async sendTSSCommand(provider: ContractProvider, signer: ethers.Wallet, payload: Cell) {
-        const signature = signCellECDSA(signer, payload);
-
-        // SHA-256
-        const hash = payload.hash();
-        if (hash.byteLength != 32) {
-            throw new Error(`Invalid hash length (got ${hash.byteLength}, want 32)`);
-        }
-
-        const message = beginCell()
-            .storeBits(signature.loadBits(8)) // v
-            .storeBits(signature.loadBits(256)) // r
-            .storeBits(signature.loadBits(256)) // s
-            .storeRef(payload)
-            .endCell();
+        const signature = crypto.ecdsaSignCell(signer, payload);
+        const message = types.externalMessage(signature, payload);
 
         await provider.external(message);
     }
@@ -163,27 +152,4 @@ export class Gateway implements Contract {
 
         return response.stack.readBigNumber();
     }
-}
-
-/**
- * Signs a cell with secp256k1 signature into a Slice (65 bytes)
- * @param signer
- * @param cell
- * @param log
- */
-export function signCellECDSA(signer: ethers.Wallet, cell: Cell, log: boolean = false): Slice {
-    const hash = cell.hash();
-    const sig = signer.signingKey.sign(hash);
-
-    // https://docs.ton.org/learn/tvm-instructions/instructions
-    //
-    // `ECRECOVER` Recovers public key from signature...
-    // Takes 32-byte hash as uint256 hash; 65-byte signature as uint8 v and uint256 r, s.
-    const [v, r, s] = [Number(sig.v), BigInt(sig.r), BigInt(sig.s)];
-
-    if (log) {
-        console.log('signCellECDSA', { v, r, s });
-    }
-
-    return beginCell().storeUint(v, 8).storeUint(r, 256).storeUint(s, 256).asSlice();
 }
