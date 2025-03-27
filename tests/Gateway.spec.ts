@@ -10,6 +10,7 @@ import { readString, stringToCell } from '@ton/core/dist/boc/utils/strings';
 import path from 'node:path';
 import * as fs from 'node:fs';
 import * as gw from '../wrappers/Gateway';
+import * as types from '../types';
 
 // Sample TSS wallet. In reality there's no single private key
 const tssWallet = new ethers.Wallet(
@@ -44,7 +45,7 @@ describe('Gateway', () => {
         // Deploy the deployer :)
         deployer = await blockchain.treasury('deployer');
 
-        const deployConfig: gw.GatewayConfig = {
+        const deployConfig: types.GatewayConfig = {
             depositsEnabled: true,
             tss: tssWallet.address,
             authority: deployer.address,
@@ -173,7 +174,7 @@ describe('Gateway', () => {
             from: sender.address,
             to: gateway.address,
             success: false,
-            exitCode: gw.GatewayError.NoIntent,
+            exitCode: types.GatewayError.NoIntent,
         });
 
         // Make sure that balance is decreased by gas fee ...
@@ -202,7 +203,7 @@ describe('Gateway', () => {
         const amount = toNano('1');
 
         // Given approx tx fee
-        const approxTXFee = await gateway.getTxFee(gw.GatewayOp.Deposit);
+        const approxTXFee = await gateway.getTxFee(types.GatewayOp.Deposit);
 
         // ACT
         const result = await gateway.sendDeposit(sender.getSender(), amount, evmAddress);
@@ -254,7 +255,7 @@ describe('Gateway', () => {
         const evmAddress = '0x92215391d24c75eb005eb4b7c8c55bf0036604a5';
 
         // Given approx tx fee
-        const approxTXFee = await gateway.getTxFee(gw.GatewayOp.Deposit);
+        const approxTXFee = await gateway.getTxFee(types.GatewayOp.Deposit);
 
         // Given amount to deposit that is 66% of approx tx fee
         const amount = (approxTXFee * 2n) / 3n;
@@ -267,7 +268,7 @@ describe('Gateway', () => {
             from: sender.address,
             to: gateway.address,
             success: false,
-            exitCode: gw.GatewayError.InsufficientValue,
+            exitCode: types.GatewayError.InsufficientValue,
         });
 
         analyzeTX(expect, tx, gatewayBalanceBefore, await gateway.getBalance());
@@ -289,7 +290,7 @@ describe('Gateway', () => {
         const gatewayBalanceBefore = await gateway.getBalance();
 
         // Given approx tx fee
-        const approxTXFee = await gateway.getTxFee(gw.GatewayOp.DepositAndCall);
+        const approxTXFee = await gateway.getTxFee(types.GatewayOp.DepositAndCall);
 
         // ACT
         const amount = toNano('10');
@@ -352,7 +353,7 @@ describe('Gateway', () => {
         const tx = expectTX(result.transactions, {
             from: sender.address,
             to: gateway.address,
-            exitCode: gw.GatewayError.InvalidCallData,
+            exitCode: types.GatewayError.InvalidCallData,
             success: false,
         });
 
@@ -387,7 +388,7 @@ describe('Gateway', () => {
             from: sender.address,
             to: gateway.address,
             success: false,
-            exitCode: gw.GatewayError.InvalidCallData,
+            exitCode: types.GatewayError.InvalidCallData,
         });
 
         analyzeTX(expect, tx, gatewayBalanceBefore, await gateway.getBalance());
@@ -454,7 +455,7 @@ describe('Gateway', () => {
         const gatewayBalanceBefore = await gateway.getBalance();
 
         // Given approx withdrawal tx fee
-        const approxTXFee = await gateway.getTxFee(gw.GatewayOp.Withdraw);
+        const approxTXFee = await gateway.getTxFee(types.GatewayOp.Withdraw);
 
         // Given sender balance BEFORE withdrawal
         const senderBalanceBefore = await sender.getBalance();
@@ -592,7 +593,7 @@ describe('Gateway', () => {
             await gateway.sendWithdraw(someRandomEvmWallet, recipient, amount);
         } catch (e: any) {
             const exitCode = e?.exitCode as number;
-            expect(exitCode).toEqual(gw.GatewayError.InvalidSignature);
+            expect(exitCode).toEqual(types.GatewayError.InvalidSignature);
         }
     });
 
@@ -614,7 +615,7 @@ describe('Gateway', () => {
             await gateway.sendWithdraw(tssWallet, recipient, amount);
         } catch (e: any) {
             const exitCode = e?.exitCode as number;
-            expect(exitCode).toEqual(gw.GatewayError.InvalidTVMRecipient);
+            expect(exitCode).toEqual(types.GatewayError.InvalidTVMRecipient);
         }
     });
 
@@ -643,7 +644,7 @@ describe('Gateway', () => {
             await gateway.sendWithdraw(tssWallet, receiver.address, withdrawAmount);
         } catch (e: any) {
             const exitCode = e?.exitCode as number;
-            expect(exitCode).toEqual(gw.GatewayError.InsufficientValue);
+            expect(exitCode).toEqual(types.GatewayError.InsufficientValue);
         }
     });
 
@@ -685,7 +686,7 @@ describe('Gateway', () => {
             from: sender.address,
             to: gateway.address,
             success: false,
-            exitCode: gw.GatewayError.DepositsDisabled,
+            exitCode: types.GatewayError.DepositsDisabled,
         });
 
         // ACT 3
@@ -722,7 +723,7 @@ describe('Gateway', () => {
             from: sender.address,
             to: gateway.address,
             success: false,
-            exitCode: gw.GatewayError.InvalidAuthority,
+            exitCode: types.GatewayError.InvalidAuthority,
         });
     });
 
@@ -751,7 +752,7 @@ describe('Gateway', () => {
         const tx = expectTX(result1.transactions, {
             from: deployer.address,
             to: gateway.address,
-            op: gw.GatewayOp.UpdateTSS,
+            op: types.GatewayOp.UpdateTSS,
         });
 
         analyzeTX(expect, tx, gatewayBalanceBefore, await gateway.getBalance());
@@ -788,7 +789,7 @@ describe('Gateway', () => {
         const tx = expectTX(result.transactions, {
             from: deployer.address,
             to: gateway.address,
-            op: gw.GatewayOp.UpdateCode,
+            op: types.GatewayOp.UpdateCode,
         });
 
         analyzeTX(expect, tx, gatewayBalanceBefore, await gateway.getBalance());
@@ -828,7 +829,7 @@ describe('Gateway', () => {
         const tx = expectTX(result1.transactions, {
             from: deployer.address,
             to: gateway.address,
-            op: gw.GatewayOp.UpdateAuthority,
+            op: types.GatewayOp.UpdateAuthority,
         });
 
         analyzeTX(expect, tx, gatewayBalanceBefore, await gateway.getBalance());
@@ -844,7 +845,7 @@ describe('Gateway', () => {
         expectTX(result2.transactions, {
             from: newAuth.address,
             to: gateway.address,
-            op: gw.GatewayOp.SetDepositsEnabled,
+            op: types.GatewayOp.SetDepositsEnabled,
             success: true,
         });
 
@@ -856,7 +857,7 @@ describe('Gateway', () => {
         expectTX(result3.transactions, {
             from: deployer.address,
             to: gateway.address,
-            exitCode: gw.GatewayError.InvalidAuthority,
+            exitCode: types.GatewayError.InvalidAuthority,
             success: false,
         });
     });

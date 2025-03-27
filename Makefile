@@ -16,4 +16,7 @@ tx: ## Execute a transaction to the Gateway
 debug: ## Outputs Gateway's debug info
 	npx blueprint run debug
 
-.PHONY: help compile test deploy tx debug
+fmt: ## Format the code
+	npm run prettier-fix
+
+.PHONY: help compile test deploy tx debug fmt
