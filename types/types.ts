@@ -38,6 +38,14 @@ export type GatewayState = {
     authority: Address;
 };
 
+// outbound message that is send from the Gateway to "void"
+// Note that is doesn't contain call data because it would use more gas.
+// Calldata should be parsed from the incoming internal message of the tx.
+export type DepositLog = {
+    amount: bigint;
+    depositFee: bigint;
+};
+
 // Initial state of the contract during deployment
 export function gatewayConfigToCell(config: GatewayConfig): Cell {
     const tss = evmAddressToSlice(config.tss);

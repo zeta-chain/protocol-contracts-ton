@@ -1,5 +1,5 @@
 import { Address, beginCell, Builder, Cell, TupleReader } from '@ton/core';
-import { GatewayOp, GatewayState } from './types';
+import { DepositLog, GatewayOp, GatewayState } from './types';
 import { bufferToHexString, evmAddressToSlice, sliceToHexString } from './utils';
 
 // op code, query id (0)
@@ -84,4 +84,13 @@ export function decodeGatewayState(stack: TupleReader): GatewayState {
         tss: bufferToHexString(stack.readBuffer()),
         authority: stack.readAddress(),
     };
+}
+
+export function decodeDepositLog(body: Cell): DepositLog {
+    const cs = body.beginParse();
+
+    const amount = cs.loadCoins();
+    const depositFee = cs.loadCoins();
+
+    return { amount, depositFee };
 }

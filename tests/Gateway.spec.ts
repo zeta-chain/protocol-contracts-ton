@@ -237,7 +237,7 @@ describe('Gateway', () => {
         expect(tx.outMessagesCount).toEqual(1);
 
         // Check for data in the log message
-        const log = gw.parseDepositLog(tx.outMessages.get(0)!.body);
+        const log = types.decodeDepositLog(tx.outMessages.get(0)!.body);
 
         expect(log.amount).toEqual(amount - approxTXFee);
         expect(log.depositFee).toEqual(approxTXFee);
@@ -314,7 +314,7 @@ describe('Gateway', () => {
         expect(tx.totalFees.coins).toBeLessThanOrEqual(approxTXFee);
 
         // Check log
-        const log = gw.parseDepositLog(tx.outMessages.get(0)!.body);
+        const log = types.decodeDepositLog(tx.outMessages.get(0)!.body);
 
         expect(log.amount).toBeLessThan(amount);
         expect(log.depositFee).toEqual(approxTXFee);

@@ -165,20 +165,6 @@ export class Gateway implements Contract {
     }
 }
 
-export interface DepositLog {
-    amount: bigint;
-    depositFee: bigint;
-}
-
-export function parseDepositLog(body: Cell): DepositLog {
-    const cs = body.beginParse();
-
-    const amount = cs.loadCoins();
-    const depositFee = cs.loadCoins();
-
-    return { amount, depositFee };
-}
-
 /**
  * Signs a cell with secp256k1 signature into a Slice (65 bytes)
  * @param signer
