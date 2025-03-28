@@ -1,6 +1,7 @@
 import { OpenedContract, toNano } from '@ton/core';
-import { Gateway, GatewayConfig } from '../wrappers/Gateway';
+import { Gateway } from '../wrappers/Gateway';
 import { compile, NetworkProvider } from '@ton/blueprint';
+import { GatewayConfig } from '../types';
 
 async function open(provider: NetworkProvider): Promise<OpenedContract<Gateway>> {
     const tss = await provider.ui().input('Enter TSS address');
@@ -15,7 +16,11 @@ async function open(provider: NetworkProvider): Promise<OpenedContract<Gateway>>
         throw new Error('Aborted');
     }
 
-    const config: GatewayConfig = { depositsEnabled: true, tss, authority };
+    const config: GatewayConfig = {
+        depositsEnabled: true,
+        tss,
+        authority,
+    };
 
     const code = await compile('Gateway');
 

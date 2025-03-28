@@ -9,5 +9,5 @@
         "strict": true,
         "skipLibCheck": true
     },
-    "include": ["wrappers/**/*"]
+    "include": ["types/**/*", "crypto/**/*", "wrappers/**/*"]
 }
