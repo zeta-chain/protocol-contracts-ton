@@ -5,7 +5,7 @@
     "license": "MIT",
     "scripts": {
         "start": "blueprint run",
-        "build": "blueprint build",
+        "build": "tsc && blueprint build",
         "prettier": "prettier -c .",
         "prettier-fix": "prettier --write -c .",
         "test": "jest --verbose"
