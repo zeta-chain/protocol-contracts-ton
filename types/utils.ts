@@ -35,13 +35,12 @@ export function bufferToHexString(b: Buffer): string {
 }
 
 /**
- * Converts a Slice to a hex string
+ * Converts a Slice to a hex string (0x...)
  * @param s - Slice
- * @param bytes - Number of bytes to convert
  * @returns string (`0x...`)
  */
-export function sliceToHexString(s: Slice, bytes: number): string {
-    return bufferToHexString(s.loadBuffer(bytes));
+export function sliceToHexString(s: Slice): string {
+    return bufferToHexString(readBuffer(s));
 }
 
 /**
@@ -82,4 +81,33 @@ function writeBuffer(src: Buffer, builder: Builder) {
     } else {
         builder = builder.storeBuffer(src);
     }
+}
+
+// https://github.com/ton-org/ton-core/blob/4eaced536d0a89f9374d9772884c7b52bddb68ba/src/boc/utils/strings.ts#L13
+export function readBuffer(slice: Slice) {
+    // Check consistency
+    if (slice.remainingBits % 8 !== 0) {
+        throw new Error(`Invalid string length: ${slice.remainingBits}`);
+    }
+
+    if (slice.remainingRefs !== 0 && slice.remainingRefs !== 1) {
+        throw new Error(`invalid number of refs: ${slice.remainingRefs}`);
+    }
+
+    // Read string
+    let res: Buffer;
+
+    if (slice.remainingBits === 0) {
+        res = Buffer.alloc(0);
+    } else {
+        res = slice.loadBuffer(slice.remainingBits / 8);
+    }
+
+    // Read tail
+    if (slice.remainingRefs === 1) {
+        const tail = slice.loadRef().beginParse();
+        res = Buffer.concat([res, readBuffer(tail)]);
+    }
+
+    return res;
 }

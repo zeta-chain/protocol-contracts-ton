@@ -1,6 +1,6 @@
-import { Address, beginCell, Builder, Cell, Slice, TupleReader } from '@ton/core';
-import { DepositLog, GatewayOp, GatewayState } from './types';
-import { bufferToHexString, evmAddressToSlice, sliceToHexString } from './utils';
+import { Address, beginCell, Builder, Cell, Slice } from '@ton/core';
+import { GatewayOp } from './types';
+import { evmAddressToSlice } from './utils';
 
 // op code, query id (0)
 function newIntent(op: GatewayOp): Builder {
