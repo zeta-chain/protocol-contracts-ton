@@ -105,3 +105,25 @@ op:uint32 recipient:MsgAddr amount:Coins seqno:uint32
 2. Recover ECDSA public key from the signature. Derive sender's EVM address from the public key.
 3. Check that the message comes from TSS address.
 4. Route the payload to the corresponding operation code.
+
+
+## Localnet
+
+This project is integrated with Zeta's [localnet](https://github.com/zeta-chain/localnet). 
+You can send transactions directly to Gateway by calling `make tx-localnet`. 
+Note that most wallets don't support custom networks, so the mnemonic is used.
+
+```sh
+export WALLET_VERSION="V5R1" # or other version
+export WALLET_MNEMONIC="front local amused plastic ..."
+
+make tx-localnet
+
+# ...
+```
+
+Tip: to generate a wallet on localnet use the following command (in localnet's repo)
+
+```sh
+yarn localnet ton wallet
+```
