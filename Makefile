@@ -13,6 +13,9 @@ test: ## Run contract tests
 deploy: ## Run deployment script
 	npx blueprint run deploy
 
+debug-tx: ## Execute a transaction to the Gateway
+	@npx blueprint run debugTransaction
+
 tx: ## Execute a transaction to the Gateway
 	npx blueprint run transaction
 
@@ -33,4 +36,4 @@ lint: ## Lint the code
 fmt: ## Format the code
 	npm run prettier-fix
 
-.PHONY: help compile test deploy tx tx-localnet debug fmt
+.PHONY: help compile test deploy tx tx-localnet debug debug-tx fmt

@@ -13,3 +13,30 @@ export async function inputGateway(provider: NetworkProvider): Promise<Address> 
         .ui()
         .inputAddress('Enter Gateway address', isTestnet ? GATEWAY_ACCOUNT_ID_TESTNET : undefined);
 }
+
+export function parseTxHash(txHash: string): { lt: string, hash: string } {
+    const chunks = txHash.split(':');
+    if (chunks.length !== 2) {
+        throw new Error(`Invalid transaction hash "${txHash}"`);
+    }
+
+    const lt = chunks[0];
+
+    // input requires hex, but ton client accepts base64
+    const hash = Buffer.from(chunks[1], 'hex').toString('base64');
+
+    return { lt, hash };
+}
+
+export function addressLink(address: Address, isTestnet: boolean): string {
+    const raw = address.toRawString();
+    return isTestnet
+        ? `https://testnet.tonscan.org/address/${raw}`
+        : `https://tonscan.org/address/${raw}`;
+}
+
+export function txLink(hash: string, isTestnet: boolean): string {
+    return isTestnet
+        ? `https://testnet.tonscan.org/tx/${hash}`
+        : `https://tonscan.org/tx/${hash}`;
+}
