@@ -14,25 +14,26 @@ import { bufferToHexString, depositLogFromCell, GatewayOp, sliceToHexString } fr
 let isTestnet = false;
 
 export async function run(provider: NetworkProvider) {
-    const client = resolveClient(provider);
-
     isTestnet = provider.network() === 'testnet';
 
-    const gwAddress = await common.inputGateway(provider);
+    const client = resolveClient(provider);
 
+    const gwAddress = await common.inputGateway(provider);
     const gw = await provider.open(Gateway.createFromAddress(gwAddress));
 
     const commands: Record<string, string> = {
+        'recent-txs': 'List recent transactions',
         'specific-tx': 'Explore specific transaction',
-        'last-txs': 'List last 10 transactions',
     };
 
     const cmd = await provider
         .ui()
         .choose('Select command', Object.keys(commands), (cmd) => commands[cmd]);
 
-    if (cmd === 'last-txs') {
-        await suppressException(async () => await fetchLastTransactions(client, gw));
+    if (cmd === 'recent-txs') {
+        const limit = await common.inputNumber(provider, 'Enter tx limit', 20);
+
+        await suppressException(async () => await fetchLastTransactions(client, gw, limit));
         return;
     }
 
@@ -42,11 +43,11 @@ export async function run(provider: NetworkProvider) {
     });
 }
 
-async function fetchLastTransactions(client: TonClient, gw: OpenedContract<Gateway>) {
-    const txs = await client.getTransactions(gw.address, { limit: 10, archival: true });
+async function fetchLastTransactions(client: TonClient, gw: OpenedContract<Gateway>, limit = 10) {
+    const txs = await client.getTransactions(gw.address, { limit, archival: true });
 
     for (const tx of txs) {
-        const parsed = parseTransaction(tx, gw);
+        const parsed = parseTransaction(tx);
         console.log(parsed);
     }
 }
@@ -54,21 +55,28 @@ async function fetchLastTransactions(client: TonClient, gw: OpenedContract<Gatew
 async function fetchTransaction(client: TonClient, gw: OpenedContract<Gateway>, txHash: string) {
     const { lt, hash } = common.parseTxHash(txHash);
 
-    let tx: Transaction | null = null;
+    let tx: Transaction | undefined;
 
     try {
-        tx = await client.getTransaction(gw.address, lt, hash);
+        const txs = await client.getTransactions(gw.address, {
+            limit: 1,
+            lt,
+            hash,
+            inclusive: true,
+            archival: true,
+        });
+        if (txs.length === 0) {
+            console.error(`Transaction "${txHash}" not found`);
+            return;
+        }
+
+        tx = txs[0];
     } catch (error) {
-        console.error('getTransaction', error);
+        console.error('getTransactions', error);
         return;
     }
 
-    if (tx === null) {
-        console.error(`Transaction "${txHash}" not found`);
-        return;
-    }
-
-    const parsed = parseTransaction(tx, gw);
+    const parsed = parseTransaction(tx);
 
     console.log('Transaction details', parsed);
 }
@@ -91,11 +99,11 @@ async function suppressException(fn: () => Promise<void>) {
     }
 }
 
-function parseTransaction(tx: Transaction, gw: OpenedContract<Gateway>) {
-    return tx.inMessage?.info.type === 'internal' ? parseInbound(tx, gw) : parseOutbound(tx, gw);
+function parseTransaction(tx: Transaction) {
+    return tx.inMessage?.info.type === 'internal' ? parseInbound(tx) : parseOutbound(tx);
 }
 
-function parseInbound(tx: Transaction, gw: OpenedContract<Gateway>) {
+function parseInbound(tx: Transaction) {
     const info = tx.inMessage!.info as CommonMessageInfoInternal;
     const hash = tx.hash().toString('hex');
 
@@ -147,7 +155,7 @@ function parseInbound(tx: Transaction, gw: OpenedContract<Gateway>) {
     };
 }
 
-function parseOutbound(tx: Transaction, gw: OpenedContract<Gateway>) {
+function parseOutbound(tx: Transaction) {
     const info = tx.inMessage!.info as CommonMessageInfoExternalIn;
     const hash = tx.hash().toString('hex');
 
