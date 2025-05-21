@@ -14,7 +14,7 @@ export async function inputGateway(provider: NetworkProvider): Promise<Address> 
         .inputAddress('Enter Gateway address', isTestnet ? GATEWAY_ACCOUNT_ID_TESTNET : undefined);
 }
 
-export function parseTxHash(txHash: string): { lt: string, hash: string } {
+export function parseTxHash(txHash: string): { lt: string; hash: string } {
     const chunks = txHash.split(':');
     if (chunks.length !== 2) {
         throw new Error(`Invalid transaction hash "${txHash}"`);
@@ -36,7 +36,5 @@ export function addressLink(address: Address, isTestnet: boolean): string {
 }
 
 export function txLink(hash: string, isTestnet: boolean): string {
-    return isTestnet
-        ? `https://testnet.tonscan.org/tx/${hash}`
-        : `https://tonscan.org/tx/${hash}`;
+    return isTestnet ? `https://testnet.tonscan.org/tx/${hash}` : `https://tonscan.org/tx/${hash}`;
 }
