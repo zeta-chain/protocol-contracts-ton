@@ -43,8 +43,12 @@ export async function run(provider: NetworkProvider) {
 }
 
 async function fetchLastTransactions(client: TonClient, gw: OpenedContract<Gateway>) {
-    // todo
-    console.log('Fetching last transactions...');
+    const txs = await client.getTransactions(gw.address, { limit: 10, archival: true });
+
+    for (const tx of txs) {
+        const parsed = parseTransaction(tx, gw);
+        console.log(parsed);
+    }
 }
 
 async function fetchTransaction(client: TonClient, gw: OpenedContract<Gateway>, txHash: string) {
