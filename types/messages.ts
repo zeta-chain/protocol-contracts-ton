@@ -2,9 +2,16 @@ import { Address, beginCell, Builder, Cell, Slice } from '@ton/core';
 import { GatewayOp } from './types';
 import { evmAddressToSlice } from './utils';
 
-// op code, query id (0)
-function newIntent(op: GatewayOp): Builder {
-    return beginCell().storeUint(op, 32).storeUint(0, 64);
+const uint64Min = 0n;
+const uint64Max = (1n << 64n) - 1n;
+
+// operation code + query id
+function newIntent(op: GatewayOp, queryId: bigint = 0n): Builder {
+    if (queryId < uint64Min || queryId > uint64Max) {
+        throw new Error('Query ID must be between 0 and 2^64 - 1');
+    }
+
+    return beginCell().storeUint(op, 32).storeUint(queryId, 64);
 }
 
 /**
@@ -20,13 +27,13 @@ export function messageDonation(): Cell {
  * @param zevmRecipient - EVM recipient address
  * @returns Cell
  */
-export function messageDeposit(zevmRecipient: string | bigint): Cell {
+export function messageDeposit(zevmRecipient: string | bigint, queryId: bigint = 0n): Cell {
     // accept bigInt or hex string
     if (typeof zevmRecipient === 'string') {
         zevmRecipient = BigInt(zevmRecipient);
     }
 
-    return newIntent(GatewayOp.Deposit)
+    return newIntent(GatewayOp.Deposit, queryId)
         .storeUint(zevmRecipient, 160) // 20 bytes
         .endCell();
 }
@@ -37,13 +44,17 @@ export function messageDeposit(zevmRecipient: string | bigint): Cell {
  * @param callData - Call data
  * @returns Cell
  */
-export function messageDepositAndCall(zevmRecipient: string | bigint, callData: Cell): Cell {
+export function messageDepositAndCall(
+    zevmRecipient: string | bigint,
+    callData: Cell,
+    queryId: bigint = 0n,
+): Cell {
     // accept bigInt or hex string
     if (typeof zevmRecipient === 'string') {
         zevmRecipient = BigInt(zevmRecipient);
     }
 
-    return newIntent(GatewayOp.DepositAndCall)
+    return newIntent(GatewayOp.DepositAndCall, queryId)
         .storeUint(zevmRecipient, 160) // 20 bytes
         .storeRef(callData)
         .endCell();
