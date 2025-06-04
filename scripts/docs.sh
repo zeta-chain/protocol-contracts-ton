@@ -4,7 +4,7 @@
 export LC_ALL=C
 export LANG=C
 
-INPUT_DIR=${1:-contracts}
+INPUT_FILE=${1:-contracts/gateway.fc}
 OUTPUT_FILE=${2:-docs/gateway.md}
 
 mkdir -p "$(dirname "$OUTPUT_FILE")"
@@ -15,12 +15,10 @@ TMP_FILE=$(mktemp)
 echo "# TON Gateway Docs" > "$TMP_FILE"
 echo "" >> "$TMP_FILE"
 
-# Sort files to ensure consistent order
-for file in $(find "$INPUT_DIR" -name "*.fc" | sort); do
-  # Create a temporary file for this specific file's content
-  FILE_TMP=$(mktemp)
-  
-  awk '
+# Process the specific file
+FILE_TMP=$(mktemp)
+
+awk '
     function is_section_comment(line) {
       return line ~ /={3,}/ || line ~ /^(Sizes|GAS|OP|EXTERNAL|INTERNAL|PARSING|GETTERS|TL-B|AUTH)/;
     }
@@ -76,18 +74,17 @@ for file in $(find "$INPUT_DIR" -name "*.fc" | sort); do
         comment = "";
       }
     }
-  ' "$file" > "$FILE_TMP"
+  ' "$INPUT_FILE" > "$FILE_TMP"
 
-  # Only add the file section if it has content
-  if [ -s "$FILE_TMP" ]; then
-    echo "## $(basename "$file")" >> "$TMP_FILE"
-    echo "" >> "$TMP_FILE"
-    cat "$FILE_TMP" >> "$TMP_FILE"
-  fi
+# Only add the file section if it has content
+if [ -s "$FILE_TMP" ]; then
+  echo "## $(basename "$INPUT_FILE")" >> "$TMP_FILE"
+  echo "" >> "$TMP_FILE"
+  cat "$FILE_TMP" >> "$TMP_FILE"
+fi
 
-  # Clean up the temporary file
-  rm "$FILE_TMP"
-done
+# Clean up the temporary file
+rm "$FILE_TMP"
 
 # Convert to Unix line endings, remove trailing newlines, and move to final location
 tr -d '\r' < "$TMP_FILE" | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' > "$OUTPUT_FILE"

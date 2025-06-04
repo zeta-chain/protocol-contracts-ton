@@ -1,28 +1,5 @@
 # TON Gateway Docs
 
-## messages.fc
-
-### `send_log_message`
-
-```func
-() send_log_message(cell body) impure inline {
-```
-
-Sends an external oubound message w/o destination a.k.a log message
-
-### `send_simple_message`
-
-```func
-() send_simple_message(int recipient, int amount, int header_bits, int mode) impure inline_ref {
-```
-
-Sends an arbitrary internal message w/o body
-
-Int_msg_info$0 ihr_disabled:Bool bounce:Bool bounced:Bool
-Src:MsgAddressInt dest:MsgAddressInt
-Value:CurrencyCollection ihr_fee:Grams fwd_fee:Grams
-Created_lt:uint64 created_at:uint32 = CommonMsgInfo;
-
 ## gateway.fc
 
 ### `guard_deposits`
