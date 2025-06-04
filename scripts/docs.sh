@@ -39,6 +39,12 @@ for file in $(find "$INPUT_DIR" -name "*.fc" | sort); do
       return toupper(substr(text,1,1)) substr(text,2);
     }
 
+    function is_function_definition(line) {
+      # Match function definitions but exclude if statements and other control structures
+      return line ~ /^\s*(\(\))?[ \t]*[a-zA-Z0-9_]+[ \t]*\([^)]*\)[ \t]*(impure)?[ \t]*(inline|inline_ref)?[ \t]*(method_id)?[ \t]*\{/ && 
+             !(line ~ /^\s*if\s*\(/ || line ~ /^\s*while\s*\(/ || line ~ /^\s*repeat\s*\(/);
+    }
+
     /^\s*;;/ {
       line = substr($0, index($0, ";;") + 2);
       if (!is_section_comment(line)) {
@@ -48,7 +54,7 @@ for file in $(find "$INPUT_DIR" -name "*.fc" | sort); do
       next;
     }
 
-    /^\s*(\(\))?[ \t]*[a-zA-Z0-9_]+[ \t]*\(.*\)[ \t]*(impure)?[ \t]*(inline|inline_ref)?[ \t]*(method_id)?[ \t]*\{/ {
+    is_function_definition($0) {
       if (collecting && comment) {
         fname = extract_func_name($0);
         print "### `" fname "`"
