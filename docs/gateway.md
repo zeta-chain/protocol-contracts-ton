@@ -11,6 +11,7 @@
 ### `send_log_message`
 
 **Signature:**
+
 ```func
 () send_log_message(cell body) impure inline {
 ```
@@ -21,6 +22,7 @@ Sends an external oubound message w/o destination a.k.a log message
 ### `send_simple_message`
 
 **Signature:**
+
 ```func
 () send_simple_message(int recipient, int amount, int header_bits, int mode) impure inline_ref {
 ```
@@ -40,6 +42,7 @@ Created_lt:uint64 created_at:uint32 = CommonMsgInfo;
 ### `guard_deposits`
 
 **Signature:**
+
 ```func
 () guard_deposits() impure inline_ref {
 ```
@@ -50,6 +53,7 @@ Checks that deposits are enabled
 ### `guard_authority_sender`
 
 **Signature:**
+
 ```func
 () guard_authority_sender(slice sender) impure inline_ref {
 ```
@@ -60,6 +64,7 @@ Checks that sender is the authority
 ### `guard_cell_size`
 
 **Signature:**
+
 ```func
 () guard_cell_size(cell data, int max_size_bits, int throw_error) impure inline {
 ```
@@ -70,6 +75,7 @@ Protects gas usage against huge payloads
 ### `handle_deposit`
 
 **Signature:**
+
 ```func
 () handle_deposit(int amount, slice in_msg_body) impure inline {
 ```
@@ -80,6 +86,7 @@ Deposit TON to the gateway and specify the EVM recipient on ZetaChain
 ### `handle_set_deposits_enabled`
 
 **Signature:**
+
 ```func
 () handle_set_deposits_enabled(slice sender, slice message) impure inline {
 ```
@@ -90,6 +97,7 @@ Enables or disables deposits.
 ### `handle_update_tss`
 
 **Signature:**
+
 ```func
 () handle_update_tss(slice sender, slice message) impure inline {
 ```
@@ -101,6 +109,7 @@ Wrong TSS address leads to loss of funds.
 ### `handle_update_code`
 
 **Signature:**
+
 ```func
 () handle_update_code(slice sender, slice message) impure inline {
 ```
@@ -112,6 +121,7 @@ Handle_code_update (cell new_code)
 ### `recv_internal`
 
 **Signature:**
+
 ```func
 () recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
 ```
@@ -122,6 +132,7 @@ Input for all internal messages
 ### `handle_withdrawal`
 
 **Signature:**
+
 ```func
 () handle_withdrawal(slice payload) impure inline {
 ```
@@ -134,6 +145,7 @@ Handle_withdrawal (MsgAddr recipient, Coins amount, int seqno)
 ### `recv_external`
 
 **Signature:**
+
 ```func
 () recv_external(slice message) impure {
 ```
@@ -142,4 +154,3 @@ Handle_withdrawal (MsgAddr recipient, Coins amount, int seqno)
 Entry point for all external messages
 
 ## stdlib.fc
-
