@@ -1,17 +1,24 @@
 #!/bin/bash
 
+# Ensure consistent behavior across platforms
 export LC_ALL=C
+export LANG=C
+
 INPUT_DIR=${1:-contracts}
 OUTPUT_FILE=${2:-docs/gateway.md}
 
 mkdir -p "$(dirname "$OUTPUT_FILE")"
 
-echo "# TON Gateway Docs" > "$OUTPUT_FILE"
-echo "" >> "$OUTPUT_FILE"
+# Create a temporary file
+TMP_FILE=$(mktemp)
 
-for file in "$INPUT_DIR"/*.fc; do
-  echo "## $(basename "$file")" >> "$OUTPUT_FILE"
-  echo "" >> "$OUTPUT_FILE"
+echo "# TON Gateway Docs" > "$TMP_FILE"
+echo "" >> "$TMP_FILE"
+
+# Sort files to ensure consistent order
+for file in $(find "$INPUT_DIR" -name "*.fc" | sort); do
+  echo "## $(basename "$file")" >> "$TMP_FILE"
+  echo "" >> "$TMP_FILE"
 
   awk '
     function is_section_comment(line) {
@@ -65,5 +72,9 @@ for file in "$INPUT_DIR"/*.fc; do
         comment = "";
       }
     }
-  ' "$file" >> "$OUTPUT_FILE"
+  ' "$file" >> "$TMP_FILE"
 done
+
+# Convert to Unix line endings and move to final location
+tr -d '\r' < "$TMP_FILE" > "$OUTPUT_FILE"
+rm "$TMP_FILE"

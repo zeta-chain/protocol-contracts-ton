@@ -1,5 +1,40 @@
 # TON Gateway Docs
 
+## crypto.fc
+
+## errors.fc
+
+## gas.fc
+
+## messages.fc
+
+### `send_log_message`
+
+**Signature:**
+```func
+() send_log_message(cell body) impure inline {
+```
+
+**Description:**
+Sends an external oubound message w/o destination a.k.a log message
+
+### `send_simple_message`
+
+**Signature:**
+```func
+() send_simple_message(int recipient, int amount, int header_bits, int mode) impure inline_ref {
+```
+
+**Description:**
+Sends an arbitrary internal message w/o body
+
+Int_msg_info$0 ihr_disabled:Bool bounce:Bool bounced:Bool
+Src:MsgAddressInt dest:MsgAddressInt
+Value:CurrencyCollection ihr_fee:Grams fwd_fee:Grams
+Created_lt:uint64 created_at:uint32 = CommonMsgInfo;
+
+## state.fc
+
 ## gateway.fc
 
 ### `guard_deposits`
@@ -105,4 +140,6 @@ Handle_withdrawal (MsgAddr recipient, Coins amount, int seqno)
 
 **Description:**
 Entry point for all external messages
+
+## stdlib.fc
 
