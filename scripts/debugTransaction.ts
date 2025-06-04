@@ -7,9 +7,17 @@ import {
     fromNano,
     OpenedContract,
     Transaction,
+    TransactionComputePhase,
+    TransactionDescriptionGeneric,
 } from '@ton/core';
 import { TonClient } from '@ton/ton';
-import { bufferToHexString, depositLogFromCell, GatewayOp, sliceToHexString } from '../types';
+import {
+    bufferToHexString,
+    DepositLog,
+    depositLogFromCell,
+    GatewayOp,
+    sliceToHexString,
+} from '../types';
 
 let isTestnet = false;
 
@@ -46,10 +54,21 @@ export async function run(provider: NetworkProvider) {
 async function fetchLastTransactions(client: TonClient, gw: OpenedContract<Gateway>, limit = 10) {
     const txs = await client.getTransactions(gw.address, { limit, archival: true });
 
+    const out: any[] = [];
+
     for (const tx of txs) {
-        const parsed = parseTransaction(tx);
-        console.log(parsed);
+        try {
+            const parsed = parseTransaction(tx);
+            out.push(parsed);
+        } catch (error) {
+            out.push({
+                hash: tx.hash().toString('hex'),
+                error: error instanceof Error ? error.message : error,
+            });
+        }
     }
+
+    console.log(JSON.stringify(out, null, 2));
 }
 
 async function fetchTransaction(client: TonClient, gw: OpenedContract<Gateway>, txHash: string) {
@@ -106,6 +125,18 @@ function parseTransaction(tx: Transaction) {
 function parseInbound(tx: Transaction) {
     const info = tx.inMessage!.info as CommonMessageInfoInternal;
     const hash = tx.hash().toString('hex');
+    const exitCode = (tx.description as any).computePhase!.exitCode as number;
+    const success = exitCode === 0;
+
+    const parseLog = (): DepositLog => {
+        if (!success) {
+            return { amount: 0n, depositFee: 0n };
+        }
+
+        const body = tx.outMessages.get(0)!.body;
+
+        return depositLogFromCell(body);
+    };
 
     let kv: Record<string, any> = {};
 
@@ -123,9 +154,9 @@ function parseInbound(tx: Transaction) {
             kv.queryId = slice.loadUint(64);
             kv.zevmRecipient = bufferToHexString(slice.loadBuffer(20));
 
-            const outDeposit = depositLogFromCell(tx.outMessages.get(0)!.body);
-            kv.depositAmount = formatCoin(outDeposit.amount);
-            kv.depositFee = formatCoin(outDeposit.depositFee);
+            const depositLog = parseLog();
+            kv.depositAmount = formatCoin(depositLog.amount);
+            kv.depositFee = formatCoin(depositLog.depositFee);
 
             break;
         case GatewayOp.DepositAndCall:
@@ -134,9 +165,9 @@ function parseInbound(tx: Transaction) {
             kv.zevmRecipient = bufferToHexString(slice.loadBuffer(20));
             kv.callData = sliceToHexString(slice.loadRef().asSlice());
 
-            const outDepositAndCall = depositLogFromCell(tx.outMessages.get(0)!.body);
-            kv.depositAmount = formatCoin(outDepositAndCall.amount);
-            kv.depositFee = formatCoin(outDepositAndCall.depositFee);
+            const dacLog = parseLog();
+            kv.depositAmount = formatCoin(dacLog.amount);
+            kv.depositFee = formatCoin(dacLog.depositFee);
 
             break;
         default:
@@ -148,6 +179,7 @@ function parseInbound(tx: Transaction) {
         receiver: info.dest.toRawString(),
         hash: `${tx.lt}:${hash}`,
         timestamp: formatDate(tx.now),
+        exitCode: exitCode,
         txAmount: formatCoin(info.value.coins),
         gas: formatCoin(tx.totalFees.coins),
         link: common.txLink(hash, isTestnet),
@@ -158,6 +190,7 @@ function parseInbound(tx: Transaction) {
 function parseOutbound(tx: Transaction) {
     const info = tx.inMessage!.info as CommonMessageInfoExternalIn;
     const hash = tx.hash().toString('hex');
+    const exitCode = (tx.description as any).computePhase!.exitCode as number;
 
     const slice = tx.inMessage!.body.beginParse();
 
@@ -180,6 +213,7 @@ function parseOutbound(tx: Transaction) {
         receiver: info.dest.toRawString(),
         hash: `${tx.lt}:${hash}`,
         timestamp: formatDate(tx.now),
+        exitCode: exitCode,
         gas: formatCoin(tx.totalFees.coins),
         link: common.txLink(hash, isTestnet),
         payload: {
