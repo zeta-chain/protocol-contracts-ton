@@ -1,5 +1,6 @@
 #!/bin/bash
 
+export LC_ALL=C
 INPUT_DIR=${1:-contracts}
 OUTPUT_FILE=${2:-docs/gateway.md}
 
