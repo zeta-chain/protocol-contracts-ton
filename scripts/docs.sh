@@ -89,6 +89,6 @@ for file in $(find "$INPUT_DIR" -name "*.fc" | sort); do
   rm "$FILE_TMP"
 done
 
-# Convert to Unix line endings and move to final location
-tr -d '\r' < "$TMP_FILE" > "$OUTPUT_FILE"
+# Convert to Unix line endings, remove trailing newlines, and move to final location
+tr -d '\r' < "$TMP_FILE" | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' > "$OUTPUT_FILE"
 rm "$TMP_FILE"
