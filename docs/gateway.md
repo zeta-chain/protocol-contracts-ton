@@ -12,6 +12,7 @@
 - **op::authority::update_tss** = 202
 - **op::authority::update_code** = 203
 - **op::authority::update_authority** = 204
+
 ### `handle_deposit`
 
 ```func

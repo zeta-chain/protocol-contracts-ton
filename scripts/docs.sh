@@ -80,6 +80,7 @@ BEGIN {
     collecting_comment   = 0     # Are we in a block of leading ";;" lines?
     comment              = ""    # Accumulated comment text
     const_header_printed = 0     # Printed the "## Constants" header yet?
+    in_const_block       = 0     # Are we in a block of constants?
 }
 
 ############################################################################
@@ -102,6 +103,10 @@ BEGIN {
 ############################################################################
 {
     if (is_function_definition($0)) {
+        if (in_const_block) {
+            print ""
+            in_const_block = 0
+        }
         fname = extract_func_name($0)
         if (want_function(fname) && collecting_comment && comment) {
             print "### `" fname "`\n"              # H3 header
@@ -141,6 +146,7 @@ BEGIN {
             const_header_printed = 1
         }
         print "- **" identifier "** = " value  # • **op::blah** = 123
+        in_const_block = 1
     }
     next
 }
