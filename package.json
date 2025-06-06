@@ -8,7 +8,8 @@
         "build": "tsc && blueprint build",
         "prettier": "prettier -c .",
         "prettier-fix": "prettier --write -c .",
-        "test": "jest --verbose"
+        "test": "jest --verbose",
+        "docs": "sh ./scripts/docs.sh"
     },
     "main": "dist/index.js",
     "files": [

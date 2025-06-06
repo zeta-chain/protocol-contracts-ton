@@ -1,0 +1,50 @@
+name: Generated Files are Updated
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "**"
+  pull_request:
+    branches:
+      - "**"
+    paths:
+      - "**"
+    types:
+      - synchronize
+      - opened
+      - reopened
+      - ready_for_review
+
+defaults:
+  run:
+    working-directory: .
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "21.1.0"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Generate docs
+        run: |
+          export LC_ALL=C
+          yarn docs
+          npx prettier -c . --write
+
+      - name: Check for changes
+        run: |
+          if git diff --exit-code --ignore-space-change --ignore-all-space --ignore-cr-at-eol -- docs; then
+            echo "Generated docs are up-to-date."
+          else
+            echo "::error::Generated docs are not up-to-date. Please run 'yarn docs' locally and commit any changes."
+            exit 1
+          fi
