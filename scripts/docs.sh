@@ -172,5 +172,3 @@ rm "$FILE_TMP"   # No longer needed
 tr -d '\r' < "$TMP_FILE" | \
   sed -e :a -e '/^\n*$/{$d;N;ba' -e '}'> "$OUTPUT_FILE"
 rm "$TMP_FILE"
-
-# Done - your freshly-minted docs are in $OUTPUT_FILE
