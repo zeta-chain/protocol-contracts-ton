@@ -4,14 +4,14 @@
 
 ### Constants
 
-- **op::internal::donate** = 100
-- **op::internal::deposit** = 101
-- **op::internal::deposit_and_call** = 102
-- **op::external::withdraw** = 200
-- **op::authority::set_deposits_enabled** = 201
-- **op::authority::update_tss** = 202
-- **op::authority::update_code** = 203
-- **op::authority::update_authority** = 204
+-   **op::internal::donate** = 100
+-   **op::internal::deposit** = 101
+-   **op::internal::deposit_and_call** = 102
+-   **op::external::withdraw** = 200
+-   **op::authority::set_deposits_enabled** = 201
+-   **op::authority::update_tss** = 202
+-   **op::authority::update_code** = 203
+-   **op::authority::update_authority** = 204
 
 ### `handle_deposit`
 
@@ -35,8 +35,8 @@ Enables or disables deposits.
 () handle_update_tss(slice sender, slice message) impure inline {
 ```
 
-Updates the TSS address. WARNING! Execute with extra caution.
-Wrong TSS address leads to loss of funds.
+Updates the TSS address. WARNING! Execute with extra caution. Wrong TSS address
+leads to loss of funds.
 
 ### `handle_update_code`
 
@@ -44,8 +44,7 @@ Wrong TSS address leads to loss of funds.
 () handle_update_code(slice sender, slice message) impure inline {
 ```
 
-Updated the code of the contract
-Handle_code_update (cell new_code)
+Updated the code of the contract Handle_code_update (cell new_code)
 
 ### `recv_internal`
 
