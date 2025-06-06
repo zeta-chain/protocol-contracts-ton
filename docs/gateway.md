@@ -2,30 +2,16 @@
 
 ## gateway.fc
 
-### `guard_deposits`
+### Constants
 
-```func
-() guard_deposits() impure inline_ref {
-```
-
-Checks that deposits are enabled
-
-### `guard_authority_sender`
-
-```func
-() guard_authority_sender(slice sender) impure inline_ref {
-```
-
-Checks that sender is the authority
-
-### `guard_cell_size`
-
-```func
-() guard_cell_size(cell data, int max_size_bits, int throw_error) impure inline {
-```
-
-Protects gas usage against huge payloads
-
+- **op::internal::donate** = 100
+- **op::internal::deposit** = 101
+- **op::internal::deposit_and_call** = 102
+- **op::external::withdraw** = 200
+- **op::authority::set_deposits_enabled** = 201
+- **op::authority::update_tss** = 202
+- **op::authority::update_code** = 203
+- **op::authority::update_authority** = 204
 ### `handle_deposit`
 
 ```func
