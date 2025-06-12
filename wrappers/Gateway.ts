@@ -119,7 +119,7 @@ export class Gateway implements Contract {
 
     async sendWithdraw(
         provider: ContractProvider,
-        signer: ethers.Wallet,
+        signer: crypto.Signer,
         recipient: Address,
         amount: bigint,
     ) {
@@ -129,7 +129,7 @@ export class Gateway implements Contract {
         return await this.sendTSSCommand(provider, signer, body);
     }
 
-    async sendIncreaseSeqno(provider: ContractProvider, signer: ethers.Wallet, reason: number) {
+    async sendIncreaseSeqno(provider: ContractProvider, signer: crypto.Signer, reason: number) {
         const seqno = await this.getSeqno(provider);
         const body = types.messageIncreaseSeqno(reason, seqno);
 
@@ -143,7 +143,7 @@ export class Gateway implements Contract {
      * @param signer
      * @param payload
      */
-    async sendTSSCommand(provider: ContractProvider, signer: ethers.Wallet, payload: Cell) {
+    async sendTSSCommand(provider: ContractProvider, signer: crypto.Signer, payload: Cell) {
         const signature = crypto.ecdsaSignCell(signer, payload);
         const message = types.messageExternal(signature, payload);
 

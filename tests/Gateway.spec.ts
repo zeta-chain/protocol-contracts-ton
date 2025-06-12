@@ -11,15 +11,20 @@ import path from 'node:path';
 import * as fs from 'node:fs';
 import * as gw from '../wrappers/Gateway';
 import * as types from '../types';
+import * as crypto from '../crypto/ecdsa';
 
 // Sample TSS wallet. In reality there's no single private key
 const tssWallet = new ethers.Wallet(
     '0xb984cd65727cfd03081fc7bf33bf5c208bca697ce16139b5ded275887e81395a',
 );
 
+const tssSigner = crypto.signerFromEthersWallet(tssWallet);
+
 const someRandomEvmWallet = new ethers.Wallet(
     '0xaa8abe680332aadf79315691144f90737c0fd5b5387580c220ce40acbf2c1562',
 );
+
+const someRandomEvmSigner = crypto.signerFromEthersWallet(someRandomEvmWallet);
 
 const startOfYear = new Date(new Date().getFullYear(), 0, 1);
 
@@ -509,7 +514,7 @@ describe('Gateway', () => {
 
         // ACT
         // Withdraw TON to the same sender on the behalf of TSS
-        const result = await gateway.sendWithdraw(tssWallet, sender.address, withdrawAmount);
+        const result = await gateway.sendWithdraw(tssSigner, sender.address, withdrawAmount);
 
         // ASSERT 1 / Withdrawal TX
         // Check withdrawal tx based on external message
@@ -592,7 +597,7 @@ describe('Gateway', () => {
 
         // ACT
         // Withdraw TON to the same sender on the behalf of TSS
-        const result = await gateway.sendWithdraw(tssWallet, receiver.address, withdrawAmount);
+        const result = await gateway.sendWithdraw(tssSigner, receiver.address, withdrawAmount);
 
         // ASSERT
         // We should have 2 txs:
@@ -634,7 +639,7 @@ describe('Gateway', () => {
         // Withdraw TON and expect an error
         try {
             // Sign with some random wallet
-            await gateway.sendWithdraw(someRandomEvmWallet, recipient, amount);
+            await gateway.sendWithdraw(someRandomEvmSigner, recipient, amount);
         } catch (e: any) {
             const exitCode = e?.exitCode as number;
             expect(exitCode).toEqual(types.GatewayError.InvalidSignature);
@@ -656,7 +661,7 @@ describe('Gateway', () => {
         // ACT & ASSERT
         // Withdraw TON and expect an error
         try {
-            await gateway.sendWithdraw(tssWallet, recipient, amount);
+            await gateway.sendWithdraw(tssSigner, recipient, amount);
         } catch (e: any) {
             const exitCode = e?.exitCode as number;
             expect(exitCode).toEqual(types.GatewayError.InvalidTVMRecipient);
@@ -685,7 +690,7 @@ describe('Gateway', () => {
         // Withdraw TON and expect an error
         try {
             // Sign with some random wallet
-            await gateway.sendWithdraw(tssWallet, receiver.address, withdrawAmount);
+            await gateway.sendWithdraw(tssSigner, receiver.address, withdrawAmount);
         } catch (e: any) {
             const exitCode = e?.exitCode as number;
             expect(exitCode).toEqual(types.GatewayError.InsufficientValue);
@@ -711,7 +716,7 @@ describe('Gateway', () => {
         // ACT
         // Increase seqno w/o any other operations
         const reasonCode = 333;
-        const result = await gateway.sendIncreaseSeqno(tssWallet, reasonCode);
+        const result = await gateway.sendIncreaseSeqno(tssSigner, reasonCode);
 
         // ASSERT
         // Check that tx is successful
@@ -756,7 +761,7 @@ describe('Gateway', () => {
 
         // ACT
         try {
-            await gateway.sendTSSCommand(tssWallet, body);
+            await gateway.sendTSSCommand(tssSigner, body);
         } catch (e: any) {
             // ASSERT
             const exitCode = e?.exitCode as number;
