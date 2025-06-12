@@ -65,6 +65,18 @@ export class Gateway implements Contract {
         await provider.internal(via, { value, sendMode, body });
     }
 
+    async sendCall(
+        provider: ContractProvider,
+        via: Sender,
+        zevmRecipient: string | bigint,
+        callData: Cell,
+    ) {
+        const value = await this.getTxFee(provider, types.GatewayOp.Call);
+        const body = types.messageCall(zevmRecipient, callData);
+
+        await provider.internal(via, { value, body });
+    }
+
     async sendDonation(provider: ContractProvider, via: Sender, value: bigint) {
         const body = types.messageDonation();
         const sendMode = SendMode.PAY_GAS_SEPARATELY;

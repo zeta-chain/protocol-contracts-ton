@@ -396,6 +396,48 @@ describe('Gateway', () => {
         analyzeTX(expect, tx, gatewayBalanceBefore, await gateway.getBalance());
     });
 
+    it('should perform a call', async () => {
+        // ARRANGE
+        // Given a sender
+        const sender = await blockchain.treasury('sender1');
+
+        // Given zevm address
+        const recipient = '0x459DdA3ff028ef63f860158bDC7298b4907c194c';
+
+        // Given quite a long call data
+        const longText = readFixture('long-call-data.txt');
+        const callData = stringToCell(longText);
+
+        // Given gateway's balance
+        const gatewayBalanceBefore = await gateway.getBalance();
+
+        // Given approx tx fee
+        const approxTXFee = await gateway.getTxFee(types.GatewayOp.Call);
+
+        // ACT
+        const result = await gateway.sendCall(sender.getSender(), recipient, callData);
+
+        // ASSERT
+        const tx = expectTX(result.transactions, {
+            from: sender.address,
+            to: gateway.address,
+            success: true,
+        });
+
+        analyzeTX(expect, tx, gatewayBalanceBefore, await gateway.getBalance());
+
+        // Check gas usage
+        expect(tx.totalFees.coins).toBeLessThanOrEqual(approxTXFee);
+
+        // Parse call data from the internal message
+        const body = tx.inMessage!.body.beginParse();
+
+        // skip op + query_id + evm address
+        const callDataCell = body.skip(64 + 32 + 160).loadRef();
+        const callDataRestored = readString(callDataCell.asSlice());
+        expect(callDataRestored).toEqual(longText);
+    });
+
     it('should perform a donation', async () => {
         // ARRANGE
         // Given gateway's balance

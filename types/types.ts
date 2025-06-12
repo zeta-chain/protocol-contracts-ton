@@ -6,6 +6,7 @@ export enum GatewayOp {
     Donate = 100,
     Deposit = 101,
     DepositAndCall = 102,
+    Call = 103,
 
     Withdraw = 200,
     IncreaseSeqno = 205,

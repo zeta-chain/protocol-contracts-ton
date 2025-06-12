@@ -18,6 +18,7 @@ const size::call_data::max = 2048 * 8; ;; 2 Kilobytes of call data
 const op::internal::donate = 100;
 const op::internal::deposit = 101;
 const op::internal::deposit_and_call = 102;
+const op::internal::call = 103;
 
 ;; tss ops
 const op::external::withdraw = 200;
@@ -31,11 +32,14 @@ const op::authority::update_authority = 204;
 const op::authority::reset_seqno = 206;
 
 ;; GAS FEES =========================================
-;; These constants are empirically determined based on tests
+;; These constants are EMPIRICALLY determined based on tests
 ;; and slightly bumped to cover all other non-gas fees (e.g. storage, fwd_fee, etc.)
 const gas::deposit = 10000;
 const gas::deposit_and_call = 13000;
+const gas::call = 10000;
+
 const gas::authority = 20000;
+
 const gas::external = 17500;
 
 ;; PARSING =========================================
@@ -150,6 +154,30 @@ const gas::external = 17500;
     send_log_message(log);
 }
 
+;; handles zeta's onCall method by ensuring call_data size and gas costs are covered;
+;;
+;; NOTE that this operation DOESN'T rebate sent amount if it's bigger than tx fee!
+;; We can consider sending surplus amount back in the future improvements.
+;; For now, send amount that is equal to calculate_gas_fee(op::call)
+() handle_call(int amount, slice in_msg_body) impure inline {
+    load_state();
+    guard_deposits();
+
+    throw_if(error::invalid_evm_recipient, in_msg_body.slice_bits() < size::evm_address);
+    in_msg_body~load_uint(size::evm_address);
+
+    throw_if(error::invalid_call_data, in_msg_body.slice_refs_empty?());
+    cell call_data = in_msg_body~load_ref();
+    guard_cell_size(call_data, size::call_data::max, error::invalid_call_data);
+
+    int tx_fee = get_gas_fee_workchain(gas::call);
+    throw_if(error::insufficient_value, amount < tx_fee);
+
+    ;; state::total_locked is NOT changed.
+
+    mutate_state();
+}
+
 ;; Enables or disables deposits.
 () handle_set_deposits_enabled(slice sender, slice message) impure inline {
     load_state();
@@ -251,6 +279,10 @@ const gas::external = 17500;
 
     if (op == op::internal::deposit_and_call) {
         return handle_deposit_and_call(msg_value, in_msg_body);
+    }
+
+    if (op == op::internal::call) {
+        return handle_call(msg_value, in_msg_body);
     }
 
     int tx_fee_authority = get_gas_fee_workchain(gas::authority);
@@ -421,6 +453,10 @@ int calculate_gas_fee(int op) method_id {
 
     if (op == op::internal::deposit_and_call) {
         return get_gas_fee_workchain(gas::deposit_and_call);
+    }
+
+    if (op == op::internal::call) {
+        return get_gas_fee_workchain(gas::call);
     }
 
     int is_authority_op = (op == op::authority::set_deposits_enabled)
