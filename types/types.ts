@@ -6,12 +6,16 @@ export enum GatewayOp {
     Donate = 100,
     Deposit = 101,
     DepositAndCall = 102,
+    Call = 103,
 
     Withdraw = 200,
+    IncreaseSeqno = 205,
+
     SetDepositsEnabled = 201,
     UpdateTSS = 202,
     UpdateCode = 203,
     UpdateAuthority = 204,
+    ResetSeqno = 206,
 }
 
 // copied from `errors.fc`
@@ -20,6 +24,7 @@ export enum GatewayError {
     InvalidCallData = 104,
     InsufficientValue = 106,
     InvalidSignature = 108,
+    InvalidSeqno = 109,
     DepositsDisabled = 110,
     InvalidAuthority = 111,
     InvalidTVMRecipient = 112,

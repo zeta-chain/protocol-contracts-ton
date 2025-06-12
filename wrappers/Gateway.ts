@@ -1,7 +1,6 @@
 import {
     Address,
     beginCell,
-    Builder,
     Cell,
     Contract,
     contractAddress,
@@ -10,11 +9,9 @@ import {
     SendMode,
     toNano,
     TupleItemInt,
-    Slice,
 } from '@ton/core';
 import * as types from '../types';
 import * as crypto from '../crypto/ecdsa';
-import * as ethers from 'ethers';
 
 export class Gateway implements Contract {
     constructor(
@@ -65,6 +62,18 @@ export class Gateway implements Contract {
         await provider.internal(via, { value, sendMode, body });
     }
 
+    async sendCall(
+        provider: ContractProvider,
+        via: Sender,
+        zevmRecipient: string | bigint,
+        callData: Cell,
+    ) {
+        const value = await this.getTxFee(provider, types.GatewayOp.Call);
+        const body = types.messageCall(zevmRecipient, callData);
+
+        await provider.internal(via, { value, body });
+    }
+
     async sendDonation(provider: ContractProvider, via: Sender, value: bigint) {
         const body = types.messageDonation();
         const sendMode = SendMode.PAY_GAS_SEPARATELY;
@@ -87,6 +96,11 @@ export class Gateway implements Contract {
         await this.sendAuthorityCommand(provider, via, body);
     }
 
+    async sendResetSeqno(provider: ContractProvider, via: Sender, seqno: number) {
+        const body = types.messageResetSeqno(seqno);
+        await this.sendAuthorityCommand(provider, via, body);
+    }
+
     async sendUpdateAuthority(provider: ContractProvider, via: Sender, authority: Address) {
         const body = types.messageUpdateAuthority(authority);
         await this.sendAuthorityCommand(provider, via, body);
@@ -102,7 +116,7 @@ export class Gateway implements Contract {
 
     async sendWithdraw(
         provider: ContractProvider,
-        signer: ethers.Wallet,
+        signer: crypto.Signer,
         recipient: Address,
         amount: bigint,
     ) {
@@ -112,6 +126,13 @@ export class Gateway implements Contract {
         return await this.sendTSSCommand(provider, signer, body);
     }
 
+    async sendIncreaseSeqno(provider: ContractProvider, signer: crypto.Signer, reason: number) {
+        const seqno = await this.getSeqno(provider);
+        const body = types.messageIncreaseSeqno(reason, seqno);
+
+        await this.sendTSSCommand(provider, signer, body);
+    }
+
     /**
      * Sign external message using ECDSA private TSS key and send it to the contract
      *
@@ -119,7 +140,7 @@ export class Gateway implements Contract {
      * @param signer
      * @param payload
      */
-    async sendTSSCommand(provider: ContractProvider, signer: ethers.Wallet, payload: Cell) {
+    async sendTSSCommand(provider: ContractProvider, signer: crypto.Signer, payload: Cell) {
         const signature = crypto.ecdsaSignCell(signer, payload);
         const message = types.messageExternal(signature, payload);
 

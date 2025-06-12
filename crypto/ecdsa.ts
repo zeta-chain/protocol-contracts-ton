@@ -1,14 +1,33 @@
 import { beginCell, Cell, Slice } from '@ton/core';
 import { ethers } from 'ethers';
 
+// Arbitrary signer
+export type Signer = (hash: Buffer) => { v: number; r: string; s: string };
+
+/**
+ * Creates a signer from an ethers.js wallet
+ * @param wallet - ethers.js wallet
+ * @returns Signer
+ */
+export function signerFromEthersWallet(wallet: ethers.Wallet): Signer {
+    return (hash: Buffer) => {
+        const sig = wallet.signingKey.sign(hash);
+
+        return {
+            v: Number(sig.v),
+            r: sig.r,
+            s: sig.s,
+        };
+    };
+}
+
 /**
  * Signs a cell with secp256k1 signature into a Slice (65 bytes)
  * @param signer
  * @param cell
  */
-export function ecdsaSignCell(signer: ethers.Wallet, cell: Cell): Slice {
-    const hash = cell.hash();
-    const sig = signer.signingKey.sign(hash);
+export function ecdsaSignCell(signer: Signer, cell: Cell): Slice {
+    const sig = signer(cell.hash());
 
     // https://docs.ton.org/learn/tvm-instructions/instructions
     //
