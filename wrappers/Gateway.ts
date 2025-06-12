@@ -1,7 +1,6 @@
 import {
     Address,
     beginCell,
-    Builder,
     Cell,
     Contract,
     contractAddress,
@@ -10,11 +9,9 @@ import {
     SendMode,
     toNano,
     TupleItemInt,
-    Slice,
 } from '@ton/core';
 import * as types from '../types';
 import * as crypto from '../crypto/ecdsa';
-import * as ethers from 'ethers';
 
 export class Gateway implements Contract {
     constructor(
