@@ -12,6 +12,7 @@ export enum GatewayOp {
     UpdateTSS = 202,
     UpdateCode = 203,
     UpdateAuthority = 204,
+    ResetNonce = 205,
 }
 
 // copied from `errors.fc`

@@ -25,10 +25,11 @@ const op::authority::set_deposits_enabled = 201;
 const op::authority::update_tss = 202;
 const op::authority::update_code = 203;
 const op::authority::update_authority = 204;
+const op::authority::reset_nonce = 205;
 
 ;; GAS FEES =========================================
 ;; These constants are empirically determined based on tests
-;; and slighly bumped to cover all other non-gas fees (e.g. storage, fwd_fee, etc.)
+;; and slightly bumped to cover all other non-gas fees (e.g. storage, fwd_fee, etc.)
 const gas::deposit = 10000;
 const gas::deposit_and_call = 13000;
 const gas::authority = 20000;
@@ -184,6 +185,18 @@ const gas::withdraw = 17500;
     mutate_state();
 }
 
+() handle_reset_nonce(slice sender, slice message) impure inline {
+    load_state();
+
+    guard_authority_sender(sender);
+
+    int new_nonce = message~load_uint(size::seqno);
+
+    state::seqno = new_nonce;
+
+    mutate_state();
+}
+
 () handle_update_authority(slice sender, slice message) impure inline {
     load_state();
 
@@ -248,6 +261,10 @@ const gas::withdraw = 17500;
 
     if (op == op::authority::update_code) {
         return handle_update_code(sender, in_msg_body);
+    }
+
+    if (op == op::authority::reset_nonce) {
+        return handle_reset_nonce(sender, in_msg_body);
     }
 
     if (op == op::authority::update_authority) {
@@ -373,7 +390,8 @@ int calculate_gas_fee(int op) method_id {
     int is_authority_op = (op == op::authority::set_deposits_enabled)
     | (op == op::authority::update_tss)
     | (op == op::authority::update_code)
-    | (op == op::authority::update_authority);
+    | (op == op::authority::update_authority)
+    | (op == op::authority::reset_nonce);
 
     if (is_authority_op) {
         return get_gas_fee_workchain(gas::authority);

@@ -87,6 +87,11 @@ export class Gateway implements Contract {
         await this.sendAuthorityCommand(provider, via, body);
     }
 
+    async sendResetNonce(provider: ContractProvider, via: Sender, nonce: number) {
+        const body = types.messageResetNonce(nonce);
+        await this.sendAuthorityCommand(provider, via, body);
+    }
+
     async sendUpdateAuthority(provider: ContractProvider, via: Sender, authority: Address) {
         const body = types.messageUpdateAuthority(authority);
         await this.sendAuthorityCommand(provider, via, body);

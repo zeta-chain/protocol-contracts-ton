@@ -810,6 +810,36 @@ describe('Gateway', () => {
         }
     });
 
+    it('should reset nonce', async () => {
+        // ARRANGE
+        // Given some value in the Gateway
+        await gateway.sendDonation(deployer.getSender(), toNano('10'));
+
+        // Given gateway's balance
+        const gatewayBalanceBefore = await gateway.getBalance();
+
+        // Given current nonce
+        const nonce = await gateway.getSeqno();
+        expect(nonce).toEqual(0);
+
+        // ACT
+        // Reset the nonce (deployer is an authority)
+        const newNonce = 123;
+        const result = await gateway.sendResetNonce(deployer.getSender(), newNonce);
+
+        // ASSERT
+        const tx = expectTX(result.transactions, {
+            from: deployer.address,
+            to: gateway.address,
+            op: types.GatewayOp.ResetNonce,
+        });
+
+        analyzeTX(expect, tx, gatewayBalanceBefore, await gateway.getBalance());
+
+        const freshNonce = await gateway.getSeqno();
+        expect(freshNonce).toEqual(newNonce);
+    });
+
     it('should update authority', async () => {
         // ARRANGE
         // Given some value in the Gateway

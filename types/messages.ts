@@ -5,6 +5,9 @@ import { evmAddressToSlice } from './utils';
 const uint64Min = 0n;
 const uint64Max = (1n << 64n) - 1n;
 
+const uint32Min = 0n;
+const uint32Max = (1n << 32n) - 1n;
+
 // operation code + query id
 function newIntent(op: GatewayOp, queryId: bigint = 0n): Builder {
     if (queryId < uint64Min || queryId > uint64Max) {
@@ -72,6 +75,14 @@ export function messageUpdateTSS(newTSS: string): Cell {
 
 export function messageUpdateCode(code: Cell): Cell {
     return newIntent(GatewayOp.UpdateCode).storeRef(code).endCell();
+}
+
+export function messageResetNonce(nonce: number): Cell {
+    if (nonce < uint32Min || nonce > uint32Max) {
+        throw new Error('Nonce must be between 0 and 2^32 - 1');
+    }
+
+    return newIntent(GatewayOp.ResetNonce).storeUint(nonce, 32).endCell();
 }
 
 export function messageUpdateAuthority(authority: Address): Cell {
