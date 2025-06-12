@@ -8,13 +8,13 @@ export enum GatewayOp {
     DepositAndCall = 102,
 
     Withdraw = 200,
-    IncreaseSeqno = 206,
+    IncreaseSeqno = 205,
 
     SetDepositsEnabled = 201,
     UpdateTSS = 202,
     UpdateCode = 203,
     UpdateAuthority = 204,
-    ResetSeqno = 205,
+    ResetSeqno = 206,
 }
 
 // copied from `errors.fc`

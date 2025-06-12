@@ -21,14 +21,14 @@ const op::internal::deposit_and_call = 102;
 
 ;; tss ops
 const op::external::withdraw = 200;
-const op::external::increase_seqno = 206;
+const op::external::increase_seqno = 205;
 
 ;; authority ops
 const op::authority::set_deposits_enabled = 201;
 const op::authority::update_tss = 202;
 const op::authority::update_code = 203;
 const op::authority::update_authority = 204;
-const op::authority::reset_seqno = 205;
+const op::authority::reset_seqno = 206;
 
 ;; GAS FEES =========================================
 ;; These constants are empirically determined based on tests
