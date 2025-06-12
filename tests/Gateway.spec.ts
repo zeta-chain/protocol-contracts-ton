@@ -97,7 +97,7 @@ describe('Gateway', () => {
 
             // noinspection JSNonASCIINames
             return {
-                'TX Label': name,
+                Test: name,
 
                 'GW Balance Before': utils.formatCoin(balanceBefore),
                 'InMsg Coins': utils.formatCoin(report.inMessage.coins),
@@ -130,7 +130,9 @@ describe('Gateway', () => {
 
         table.map((row) => console.table(row));
 
-        dumpArrayToCSV(table, `gas-${jest.getSeed()}.csv`);
+        const date = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+
+        dumpArrayToCSV(table, `gas-${date}.csv`);
     });
 
     it('should deploy', async () => {
@@ -147,8 +149,8 @@ describe('Gateway', () => {
         expect(state.authority.toRawString()).toBe(deployer.address.toRawString());
 
         // Check that seqno works and is zero
-        const nonce = await gateway.getSeqno();
-        expect(nonce).toBe(0);
+        const seqno = await gateway.getSeqno();
+        expect(seqno).toBe(0);
     });
 
     it('should fail without opcode and query id', async () => {
@@ -505,7 +507,7 @@ describe('Gateway', () => {
         expect(maxExpense).toEqual(valueLockedDelta);
         expect(gatewayBalanceDelta).toBeLessThanOrEqual(valueLockedDelta);
 
-        // Check nonce
+        // Check seqno
         const seqno = await gateway.getSeqno();
         expect(seqno).toEqual(1);
 
@@ -645,6 +647,78 @@ describe('Gateway', () => {
         } catch (e: any) {
             const exitCode = e?.exitCode as number;
             expect(exitCode).toEqual(types.GatewayError.InsufficientValue);
+        }
+    });
+
+    it('should increase seqno', async () => {
+        // ARRANGE
+        // Given some funds in the gateway
+        await gateway.sendDeposit(
+            deployer.getSender(),
+            toNano('10'),
+            '0x95222290dd7278aa3ddd389cc1e1d165cc4bafe5',
+        );
+
+        const gatewayBalanceBefore = await gateway.getBalance();
+        const { valueLocked: valueLockedBefore } = await gateway.getGatewayState();
+
+        // Given current seqno
+        const seqnoBefore = await gateway.getSeqno();
+        expect(seqnoBefore).toEqual(0);
+
+        // ACT
+        // Increase seqno w/o any other operations
+        const reasonCode = 333;
+        const result = await gateway.sendIncreaseSeqno(tssWallet, reasonCode);
+
+        // ASSERT
+        // Check that tx is successful
+        const tx = expectTX(result.transactions, {
+            from: undefined,
+            to: gateway.address,
+            success: true,
+        });
+
+        // And only one tx was created (contract state mutation)
+        expect(result.transactions.length).toEqual(1);
+
+        analyzeTX(expect, tx, gatewayBalanceBefore, await gateway.getBalance());
+
+        // Check that valueLocked decreased by tx fee
+        const txFee = await gateway.getTxFee(types.GatewayOp.IncreaseSeqno);
+        const { valueLocked } = await gateway.getGatewayState();
+        expect(valueLocked).toEqual(valueLockedBefore - txFee);
+
+        // Check tx debug content
+        expect(tx.debugLogs).toContain('increase_reason');
+        expect(tx.debugLogs).toContain(`${reasonCode}`);
+
+        // Check that seqno is increased
+        const seqnoAfter = await gateway.getSeqno();
+        expect(seqnoAfter).toEqual(seqnoBefore + 1);
+    });
+
+    it('should fail to increase seqno if invalid', async () => {
+        // ARRANGE
+        // Given some funds in the gateway
+        await gateway.sendDeposit(
+            deployer.getSender(),
+            toNano('10'),
+            '0x95222290dd7278aa3ddd389cc1e1d165cc4bafe5',
+        );
+
+        // Given a reason code and seqno (invalid!)
+        const reasonCode = 0;
+        const seqno = 123;
+        const body = types.messageIncreaseSeqno(reasonCode, seqno);
+
+        // ACT
+        try {
+            await gateway.sendTSSCommand(tssWallet, body);
+        } catch (e: any) {
+            // ASSERT
+            const exitCode = e?.exitCode as number;
+            expect(exitCode).toEqual(types.GatewayError.InvalidSeqno);
         }
     });
 
@@ -810,7 +884,7 @@ describe('Gateway', () => {
         }
     });
 
-    it('should reset nonce', async () => {
+    it('should reset seqno', async () => {
         // ARRANGE
         // Given some value in the Gateway
         await gateway.sendDonation(deployer.getSender(), toNano('10'));
@@ -818,26 +892,26 @@ describe('Gateway', () => {
         // Given gateway's balance
         const gatewayBalanceBefore = await gateway.getBalance();
 
-        // Given current nonce
-        const nonce = await gateway.getSeqno();
-        expect(nonce).toEqual(0);
+        // Given current seqno
+        const seqno = await gateway.getSeqno();
+        expect(seqno).toEqual(0);
 
         // ACT
-        // Reset the nonce (deployer is an authority)
-        const newNonce = 123;
-        const result = await gateway.sendResetNonce(deployer.getSender(), newNonce);
+        // Reset the seqno (deployer is an authority)
+        const newSeqno = 123;
+        const result = await gateway.sendResetSeqno(deployer.getSender(), newSeqno);
 
         // ASSERT
         const tx = expectTX(result.transactions, {
             from: deployer.address,
             to: gateway.address,
-            op: types.GatewayOp.ResetNonce,
+            op: types.GatewayOp.ResetSeqno,
         });
 
         analyzeTX(expect, tx, gatewayBalanceBefore, await gateway.getBalance());
 
-        const freshNonce = await gateway.getSeqno();
-        expect(freshNonce).toEqual(newNonce);
+        const freshSeqno = await gateway.getSeqno();
+        expect(freshSeqno).toEqual(newSeqno);
     });
 
     it('should update authority', async () => {
@@ -893,7 +967,10 @@ describe('Gateway', () => {
     });
 });
 
-export function expectTX(transactions: Transaction[], cmp: FlatTransactionComparable): Transaction {
+export function expectTX<T extends Transaction>(
+    transactions: T[],
+    cmp: FlatTransactionComparable,
+): T {
     expect(transactions).toHaveTransaction(cmp);
 
     const tx = findTransaction(transactions, cmp);

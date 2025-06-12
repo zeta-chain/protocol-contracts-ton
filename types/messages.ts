@@ -77,12 +77,8 @@ export function messageUpdateCode(code: Cell): Cell {
     return newIntent(GatewayOp.UpdateCode).storeRef(code).endCell();
 }
 
-export function messageResetNonce(nonce: number): Cell {
-    if (nonce < uint32Min || nonce > uint32Max) {
-        throw new Error('Nonce must be between 0 and 2^32 - 1');
-    }
-
-    return newIntent(GatewayOp.ResetNonce).storeUint(nonce, 32).endCell();
+export function messageResetSeqno(newSeqno: number): Cell {
+    return newIntent(GatewayOp.ResetSeqno).storeUint(guardUint32(newSeqno), 32).endCell();
 }
 
 export function messageUpdateAuthority(authority: Address): Cell {
@@ -94,7 +90,15 @@ export function messageWithdraw(seqno: number, recipient: Address, amount: bigin
         .storeUint(GatewayOp.Withdraw, 32)
         .storeAddress(recipient)
         .storeCoins(amount)
-        .storeUint(seqno, 32)
+        .storeUint(guardUint32(seqno), 32)
+        .endCell();
+}
+
+export function messageIncreaseSeqno(reason: number, seqno: number): Cell {
+    return beginCell()
+        .storeUint(GatewayOp.IncreaseSeqno, 32)
+        .storeUint(guardUint32(reason), 32)
+        .storeUint(guardUint32(seqno), 32)
         .endCell();
 }
 
@@ -111,4 +115,12 @@ export function messageExternal(signature: Slice, payload: Cell): Cell {
     const [v, r, s] = [signature.loadBits(8), signature.loadBits(256), signature.loadBits(256)];
 
     return beginCell().storeBits(v).storeBits(r).storeBits(s).storeRef(payload).endCell();
+}
+
+function guardUint32(v: number) {
+    if (v < uint32Min || v > uint32Max) {
+        throw new Error(`Value must be between 0 and 2^32 - 1, got ${v}`);
+    }
+
+    return v;
 }

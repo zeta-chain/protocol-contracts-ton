@@ -19,13 +19,16 @@ const op::internal::donate = 100;
 const op::internal::deposit = 101;
 const op::internal::deposit_and_call = 102;
 
+;; tss ops
 const op::external::withdraw = 200;
+const op::external::increase_seqno = 206;
 
+;; authority ops
 const op::authority::set_deposits_enabled = 201;
 const op::authority::update_tss = 202;
 const op::authority::update_code = 203;
 const op::authority::update_authority = 204;
-const op::authority::reset_nonce = 205;
+const op::authority::reset_seqno = 205;
 
 ;; GAS FEES =========================================
 ;; These constants are empirically determined based on tests
@@ -33,7 +36,7 @@ const op::authority::reset_nonce = 205;
 const gas::deposit = 10000;
 const gas::deposit_and_call = 13000;
 const gas::authority = 20000;
-const gas::withdraw = 17500;
+const gas::external = 17500;
 
 ;; PARSING =========================================
 
@@ -185,14 +188,16 @@ const gas::withdraw = 17500;
     mutate_state();
 }
 
-() handle_reset_nonce(slice sender, slice message) impure inline {
+;; Resets the seqno to the specified value
+;; handles reset_seqno (uint32 new_seqno)
+() handle_reset_seqno(slice sender, slice message) impure inline {
     load_state();
 
     guard_authority_sender(sender);
 
-    int new_nonce = message~load_uint(size::seqno);
+    int new_seqno = message~load_uint(size::seqno);
 
-    state::seqno = new_nonce;
+    state::seqno = new_seqno;
 
     mutate_state();
 }
@@ -263,8 +268,8 @@ const gas::withdraw = 17500;
         return handle_update_code(sender, in_msg_body);
     }
 
-    if (op == op::authority::reset_nonce) {
-        return handle_reset_nonce(sender, in_msg_body);
+    if (op == op::authority::reset_seqno) {
+        return handle_reset_seqno(sender, in_msg_body);
     }
 
     if (op == op::authority::update_authority) {
@@ -302,7 +307,7 @@ cell auth::ecdsa::external(slice message, slice expected_evm_address) inline {
 
 ;; Withdraws assets to the recipient
 ;;
-;; handle_withdrawal (MsgAddr recipient, Coins amount, int seqno)
+;; handle_withdrawal (MsgAddr recipient, Coins amount, uint32 seqno)
 () handle_withdrawal(slice payload) impure inline {
     ;; load the body
     slice recipient = payload~load_msg_addr();
@@ -317,7 +322,7 @@ cell auth::ecdsa::external(slice message, slice expected_evm_address) inline {
     throw_if(error::insufficient_value, amount == 0);
     throw_if(error::invalid_seqno, seqno != state::seqno);
 
-    int tx_fee = get_gas_fee_workchain(gas::withdraw);
+    int tx_fee = get_gas_fee_workchain(gas::external);
 
     ;; edge-case: make sure gw has enough coins when having low funds
     throw_if(error::insufficient_value, state::total_locked < (amount + tx_fee));
@@ -328,12 +333,39 @@ cell auth::ecdsa::external(slice message, slice expected_evm_address) inline {
     state::total_locked -= (amount + tx_fee);
     state::seqno += 1;
 
+    ;; Sent TON and mutate the state
     mutate_state();
     commit();
 
-    ;; Sent TON and mutate the state
     int send_mode = message::flag::pay_fees_separately;
     send_simple_message_non_bounceable(recipient_addr, amount, send_mode);
+}
+
+;; Increases seqno by 1 without doing any other operations.
+;; handle_increase_seqno (uint32 failure_reason, uint32 seqno)
+() handle_increase_seqno(slice payload) impure inline {
+    ;; load the body
+    int increase_reason = payload~load_uint(size::seqno);
+
+    ;; note that increase_reason is an arbitrary number defined by the protocol
+    ;; and is used to identify the reason for the increase (via parsing input message OR debug logs)
+    ~strdump("increase_reason");
+    increase_reason~dump();
+
+    int seqno = payload~load_uint(size::seqno);
+
+    throw_if(error::invalid_seqno, seqno != state::seqno);
+
+    int tx_fee = get_gas_fee_workchain(gas::external);
+    throw_if(error::insufficient_value, state::total_locked < tx_fee);
+
+    ;; accept the message, the contract agrees to pay gas fees
+    accept_message();
+
+    state::total_locked -= tx_fee;
+    state::seqno += 1;
+
+    mutate_state();
 }
 
 ;; Entry point for all external messages
@@ -346,6 +378,10 @@ cell auth::ecdsa::external(slice message, slice expected_evm_address) inline {
 
     if (op == op::external::withdraw) {
         return handle_withdrawal(payload);
+    }
+
+    if (op == op::external::increase_seqno) {
+        return handle_increase_seqno(payload);
     }
 
     throw(error::unknown_op);
@@ -370,7 +406,7 @@ cell auth::ecdsa::external(slice message, slice expected_evm_address) inline {
     );
 }
 
-;; get nonce (int32)
+;; get seqno [nonce] (int32)
 int seqno() method_id {
     load_state();
 
@@ -391,14 +427,17 @@ int calculate_gas_fee(int op) method_id {
     | (op == op::authority::update_tss)
     | (op == op::authority::update_code)
     | (op == op::authority::update_authority)
-    | (op == op::authority::reset_nonce);
+    | (op == op::authority::reset_seqno);
 
     if (is_authority_op) {
         return get_gas_fee_workchain(gas::authority);
     }
 
-    if (op == op::external::withdraw) {
-        return get_gas_fee_workchain(gas::withdraw);
+    int is_external_op = (op == op::external::withdraw)
+    | (op == op::external::increase_seqno);
+
+    if (is_external_op) {
+        return get_gas_fee_workchain(gas::external);
     }
 
     throw(error::unknown_op);

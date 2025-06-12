@@ -87,8 +87,8 @@ export class Gateway implements Contract {
         await this.sendAuthorityCommand(provider, via, body);
     }
 
-    async sendResetNonce(provider: ContractProvider, via: Sender, nonce: number) {
-        const body = types.messageResetNonce(nonce);
+    async sendResetSeqno(provider: ContractProvider, via: Sender, seqno: number) {
+        const body = types.messageResetSeqno(seqno);
         await this.sendAuthorityCommand(provider, via, body);
     }
 
@@ -115,6 +115,13 @@ export class Gateway implements Contract {
         const body = types.messageWithdraw(seqno, recipient, amount);
 
         return await this.sendTSSCommand(provider, signer, body);
+    }
+
+    async sendIncreaseSeqno(provider: ContractProvider, signer: ethers.Wallet, reason: number) {
+        const seqno = await this.getSeqno(provider);
+        const body = types.messageIncreaseSeqno(reason, seqno);
+
+        await this.sendTSSCommand(provider, signer, body);
     }
 
     /**
