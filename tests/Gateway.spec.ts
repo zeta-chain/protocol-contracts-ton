@@ -11,15 +11,20 @@ import path from 'node:path';
 import * as fs from 'node:fs';
 import * as gw from '../wrappers/Gateway';
 import * as types from '../types';
+import * as crypto from '../crypto/ecdsa';
 
 // Sample TSS wallet. In reality there's no single private key
 const tssWallet = new ethers.Wallet(
     '0xb984cd65727cfd03081fc7bf33bf5c208bca697ce16139b5ded275887e81395a',
 );
 
+const tssSigner = crypto.signerFromEthersWallet(tssWallet);
+
 const someRandomEvmWallet = new ethers.Wallet(
     '0xaa8abe680332aadf79315691144f90737c0fd5b5387580c220ce40acbf2c1562',
 );
+
+const someRandomEvmSigner = crypto.signerFromEthersWallet(someRandomEvmWallet);
 
 const startOfYear = new Date(new Date().getFullYear(), 0, 1);
 
@@ -97,7 +102,7 @@ describe('Gateway', () => {
 
             // noinspection JSNonASCIINames
             return {
-                'TX Label': name,
+                Test: name,
 
                 'GW Balance Before': utils.formatCoin(balanceBefore),
                 'InMsg Coins': utils.formatCoin(report.inMessage.coins),
@@ -130,7 +135,9 @@ describe('Gateway', () => {
 
         table.map((row) => console.table(row));
 
-        dumpArrayToCSV(table, `gas-${jest.getSeed()}.csv`);
+        const date = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+
+        dumpArrayToCSV(table, `gas-${date}.csv`);
     });
 
     it('should deploy', async () => {
@@ -147,8 +154,8 @@ describe('Gateway', () => {
         expect(state.authority.toRawString()).toBe(deployer.address.toRawString());
 
         // Check that seqno works and is zero
-        const nonce = await gateway.getSeqno();
-        expect(nonce).toBe(0);
+        const seqno = await gateway.getSeqno();
+        expect(seqno).toBe(0);
     });
 
     it('should fail without opcode and query id', async () => {
@@ -394,6 +401,48 @@ describe('Gateway', () => {
         analyzeTX(expect, tx, gatewayBalanceBefore, await gateway.getBalance());
     });
 
+    it('should perform a call', async () => {
+        // ARRANGE
+        // Given a sender
+        const sender = await blockchain.treasury('sender1');
+
+        // Given zevm address
+        const recipient = '0x459DdA3ff028ef63f860158bDC7298b4907c194c';
+
+        // Given quite a long call data
+        const longText = readFixture('long-call-data.txt');
+        const callData = stringToCell(longText);
+
+        // Given gateway's balance
+        const gatewayBalanceBefore = await gateway.getBalance();
+
+        // Given approx tx fee
+        const approxTXFee = await gateway.getTxFee(types.GatewayOp.Call);
+
+        // ACT
+        const result = await gateway.sendCall(sender.getSender(), recipient, callData);
+
+        // ASSERT
+        const tx = expectTX(result.transactions, {
+            from: sender.address,
+            to: gateway.address,
+            success: true,
+        });
+
+        analyzeTX(expect, tx, gatewayBalanceBefore, await gateway.getBalance());
+
+        // Check gas usage
+        expect(tx.totalFees.coins).toBeLessThanOrEqual(approxTXFee);
+
+        // Parse call data from the internal message
+        const body = tx.inMessage!.body.beginParse();
+
+        // skip op + query_id + evm address
+        const callDataCell = body.skip(64 + 32 + 160).loadRef();
+        const callDataRestored = readString(callDataCell.asSlice());
+        expect(callDataRestored).toEqual(longText);
+    });
+
     it('should perform a donation', async () => {
         // ARRANGE
         // Given gateway's balance
@@ -465,7 +514,7 @@ describe('Gateway', () => {
 
         // ACT
         // Withdraw TON to the same sender on the behalf of TSS
-        const result = await gateway.sendWithdraw(tssWallet, sender.address, withdrawAmount);
+        const result = await gateway.sendWithdraw(tssSigner, sender.address, withdrawAmount);
 
         // ASSERT 1 / Withdrawal TX
         // Check withdrawal tx based on external message
@@ -505,7 +554,7 @@ describe('Gateway', () => {
         expect(maxExpense).toEqual(valueLockedDelta);
         expect(gatewayBalanceDelta).toBeLessThanOrEqual(valueLockedDelta);
 
-        // Check nonce
+        // Check seqno
         const seqno = await gateway.getSeqno();
         expect(seqno).toEqual(1);
 
@@ -548,7 +597,7 @@ describe('Gateway', () => {
 
         // ACT
         // Withdraw TON to the same sender on the behalf of TSS
-        const result = await gateway.sendWithdraw(tssWallet, receiver.address, withdrawAmount);
+        const result = await gateway.sendWithdraw(tssSigner, receiver.address, withdrawAmount);
 
         // ASSERT
         // We should have 2 txs:
@@ -590,7 +639,7 @@ describe('Gateway', () => {
         // Withdraw TON and expect an error
         try {
             // Sign with some random wallet
-            await gateway.sendWithdraw(someRandomEvmWallet, recipient, amount);
+            await gateway.sendWithdraw(someRandomEvmSigner, recipient, amount);
         } catch (e: any) {
             const exitCode = e?.exitCode as number;
             expect(exitCode).toEqual(types.GatewayError.InvalidSignature);
@@ -612,7 +661,7 @@ describe('Gateway', () => {
         // ACT & ASSERT
         // Withdraw TON and expect an error
         try {
-            await gateway.sendWithdraw(tssWallet, recipient, amount);
+            await gateway.sendWithdraw(tssSigner, recipient, amount);
         } catch (e: any) {
             const exitCode = e?.exitCode as number;
             expect(exitCode).toEqual(types.GatewayError.InvalidTVMRecipient);
@@ -641,10 +690,82 @@ describe('Gateway', () => {
         // Withdraw TON and expect an error
         try {
             // Sign with some random wallet
-            await gateway.sendWithdraw(tssWallet, receiver.address, withdrawAmount);
+            await gateway.sendWithdraw(tssSigner, receiver.address, withdrawAmount);
         } catch (e: any) {
             const exitCode = e?.exitCode as number;
             expect(exitCode).toEqual(types.GatewayError.InsufficientValue);
+        }
+    });
+
+    it('should increase seqno', async () => {
+        // ARRANGE
+        // Given some funds in the gateway
+        await gateway.sendDeposit(
+            deployer.getSender(),
+            toNano('10'),
+            '0x95222290dd7278aa3ddd389cc1e1d165cc4bafe5',
+        );
+
+        const gatewayBalanceBefore = await gateway.getBalance();
+        const { valueLocked: valueLockedBefore } = await gateway.getGatewayState();
+
+        // Given current seqno
+        const seqnoBefore = await gateway.getSeqno();
+        expect(seqnoBefore).toEqual(0);
+
+        // ACT
+        // Increase seqno w/o any other operations
+        const reasonCode = 333;
+        const result = await gateway.sendIncreaseSeqno(tssSigner, reasonCode);
+
+        // ASSERT
+        // Check that tx is successful
+        const tx = expectTX(result.transactions, {
+            from: undefined,
+            to: gateway.address,
+            success: true,
+        });
+
+        // And only one tx was created (contract state mutation)
+        expect(result.transactions.length).toEqual(1);
+
+        analyzeTX(expect, tx, gatewayBalanceBefore, await gateway.getBalance());
+
+        // Check that valueLocked decreased by tx fee
+        const txFee = await gateway.getTxFee(types.GatewayOp.IncreaseSeqno);
+        const { valueLocked } = await gateway.getGatewayState();
+        expect(valueLocked).toEqual(valueLockedBefore - txFee);
+
+        // Check tx debug content
+        expect(tx.debugLogs).toContain('increase_reason');
+        expect(tx.debugLogs).toContain(`${reasonCode}`);
+
+        // Check that seqno is increased
+        const seqnoAfter = await gateway.getSeqno();
+        expect(seqnoAfter).toEqual(seqnoBefore + 1);
+    });
+
+    it('should fail to increase seqno if invalid', async () => {
+        // ARRANGE
+        // Given some funds in the gateway
+        await gateway.sendDeposit(
+            deployer.getSender(),
+            toNano('10'),
+            '0x95222290dd7278aa3ddd389cc1e1d165cc4bafe5',
+        );
+
+        // Given a reason code and seqno (invalid!)
+        const reasonCode = 0;
+        const seqno = 123;
+        const body = types.messageIncreaseSeqno(reasonCode, seqno);
+
+        // ACT
+        try {
+            await gateway.sendTSSCommand(tssSigner, body);
+        } catch (e: any) {
+            // ASSERT
+            const exitCode = e?.exitCode as number;
+            expect(exitCode).toEqual(types.GatewayError.InvalidSeqno);
         }
     });
 
@@ -810,6 +931,36 @@ describe('Gateway', () => {
         }
     });
 
+    it('should reset seqno', async () => {
+        // ARRANGE
+        // Given some value in the Gateway
+        await gateway.sendDonation(deployer.getSender(), toNano('10'));
+
+        // Given gateway's balance
+        const gatewayBalanceBefore = await gateway.getBalance();
+
+        // Given current seqno
+        const seqno = await gateway.getSeqno();
+        expect(seqno).toEqual(0);
+
+        // ACT
+        // Reset the seqno (deployer is an authority)
+        const newSeqno = 123;
+        const result = await gateway.sendResetSeqno(deployer.getSender(), newSeqno);
+
+        // ASSERT
+        const tx = expectTX(result.transactions, {
+            from: deployer.address,
+            to: gateway.address,
+            op: types.GatewayOp.ResetSeqno,
+        });
+
+        analyzeTX(expect, tx, gatewayBalanceBefore, await gateway.getBalance());
+
+        const freshSeqno = await gateway.getSeqno();
+        expect(freshSeqno).toEqual(newSeqno);
+    });
+
     it('should update authority', async () => {
         // ARRANGE
         // Given some value in the Gateway
@@ -863,7 +1014,10 @@ describe('Gateway', () => {
     });
 });
 
-export function expectTX(transactions: Transaction[], cmp: FlatTransactionComparable): Transaction {
+export function expectTX<T extends Transaction>(
+    transactions: T[],
+    cmp: FlatTransactionComparable,
+): T {
     expect(transactions).toHaveTransaction(cmp);
 
     const tx = findTransaction(transactions, cmp);

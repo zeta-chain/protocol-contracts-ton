@@ -5,6 +5,12 @@ import { evmAddressToSlice } from './utils';
 const uint64Min = 0n;
 const uint64Max = (1n << 64n) - 1n;
 
+const uint32Min = 0n;
+const uint32Max = (1n << 32n) - 1n;
+
+// 20B is 160 bits
+const evmAddressSize = 20 * 8;
+
 // operation code + query id
 function newIntent(op: GatewayOp, queryId: bigint = 0n): Builder {
     if (queryId < uint64Min || queryId > uint64Max) {
@@ -28,13 +34,8 @@ export function messageDonation(): Cell {
  * @returns Cell
  */
 export function messageDeposit(zevmRecipient: string | bigint, queryId: bigint = 0n): Cell {
-    // accept bigInt or hex string
-    if (typeof zevmRecipient === 'string') {
-        zevmRecipient = BigInt(zevmRecipient);
-    }
-
     return newIntent(GatewayOp.Deposit, queryId)
-        .storeUint(zevmRecipient, 160) // 20 bytes
+        .storeUint(normalizeEVMAddress(zevmRecipient), evmAddressSize)
         .endCell();
 }
 
@@ -42,6 +43,7 @@ export function messageDeposit(zevmRecipient: string | bigint, queryId: bigint =
  * Creates a deposit and call body for the Gateway contract
  * @param zevmRecipient - EVM recipient address
  * @param callData - Call data
+ * @param queryId - Query ID
  * @returns Cell
  */
 export function messageDepositAndCall(
@@ -49,13 +51,26 @@ export function messageDepositAndCall(
     callData: Cell,
     queryId: bigint = 0n,
 ): Cell {
-    // accept bigInt or hex string
-    if (typeof zevmRecipient === 'string') {
-        zevmRecipient = BigInt(zevmRecipient);
-    }
-
     return newIntent(GatewayOp.DepositAndCall, queryId)
-        .storeUint(zevmRecipient, 160) // 20 bytes
+        .storeUint(normalizeEVMAddress(zevmRecipient), evmAddressSize)
+        .storeRef(callData)
+        .endCell();
+}
+
+/**
+ * Creates a call body for the Gateway contract
+ * @param zevmRecipient - EVM recipient address
+ * @param callData - Call data
+ * @param queryId - Query ID
+ * @returns Cell
+ */
+export function messageCall(
+    zevmRecipient: string | bigint,
+    callData: Cell,
+    queryId: bigint = 0n,
+): Cell {
+    return newIntent(GatewayOp.Call, queryId)
+        .storeUint(normalizeEVMAddress(zevmRecipient), evmAddressSize)
         .storeRef(callData)
         .endCell();
 }
@@ -74,6 +89,10 @@ export function messageUpdateCode(code: Cell): Cell {
     return newIntent(GatewayOp.UpdateCode).storeRef(code).endCell();
 }
 
+export function messageResetSeqno(newSeqno: number): Cell {
+    return newIntent(GatewayOp.ResetSeqno).storeUint(guardUint32(newSeqno), 32).endCell();
+}
+
 export function messageUpdateAuthority(authority: Address): Cell {
     return newIntent(GatewayOp.UpdateAuthority).storeAddress(authority).endCell();
 }
@@ -83,7 +102,15 @@ export function messageWithdraw(seqno: number, recipient: Address, amount: bigin
         .storeUint(GatewayOp.Withdraw, 32)
         .storeAddress(recipient)
         .storeCoins(amount)
-        .storeUint(seqno, 32)
+        .storeUint(guardUint32(seqno), 32)
+        .endCell();
+}
+
+export function messageIncreaseSeqno(reason: number, seqno: number): Cell {
+    return beginCell()
+        .storeUint(GatewayOp.IncreaseSeqno, 32)
+        .storeUint(guardUint32(reason), 32)
+        .storeUint(guardUint32(seqno), 32)
         .endCell();
 }
 
@@ -100,4 +127,21 @@ export function messageExternal(signature: Slice, payload: Cell): Cell {
     const [v, r, s] = [signature.loadBits(8), signature.loadBits(256), signature.loadBits(256)];
 
     return beginCell().storeBits(v).storeBits(r).storeBits(s).storeRef(payload).endCell();
+}
+
+function normalizeEVMAddress(address: string | bigint) {
+    if (typeof address === 'string') {
+        // hex should be lowercase
+        address = BigInt(address.toLowerCase());
+    }
+
+    return address;
+}
+
+function guardUint32(v: number) {
+    if (v < uint32Min || v > uint32Max) {
+        throw new Error(`Value must be between 0 and 2^32 - 1, got ${v}`);
+    }
+
+    return v;
 }

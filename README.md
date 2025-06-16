@@ -3,11 +3,7 @@
 Contracts of official protocol contracts deployed by the core ZetaChain team to facilitate cross-chain
 operations using TON (The Open Network) and other chains.
 
-## Supported operations
-
-- `deposit` - deposit TON to the Gateway contract
-- `deposit_and_call` - deposit TON to the Gateway contract and call a contract on the EVM side
-- `withdraw` - withdraw TON from the Gateway contract
+[Contracts Documentation](./docs/gateway.md)
 
 ## ⚠️ Important Notice
 
@@ -76,6 +72,7 @@ Currently, a dedicated authority address is used `state::authority_address`
 - `update_tss` - update TSS public key
 - `update_code` - upgrade the contract code
 - `update_authority` - update the authority TON address
+- ...
 
 ### Withdrawals
 

@@ -4,6 +4,7 @@ import { ethers } from 'ethers';
 import { formatCoin } from '../tests/utils';
 import { Gateway } from '../wrappers/Gateway';
 import * as types from '../types';
+import * as crypto from '../crypto/ecdsa';
 import * as common from './common';
 
 async function open(p: NetworkProvider): Promise<OpenedContract<Gateway>> {
@@ -26,6 +27,7 @@ export async function run(p: NetworkProvider) {
     const commands = [
         'deposit',
         'depositAndCall',
+        'call',
         'donate',
         'send',
         'withdraw',
@@ -40,6 +42,8 @@ export async function run(p: NetworkProvider) {
             return await deposit(p, gw);
         case 'depositAndCall':
             return await depositAndCall(p, gw);
+        case 'call':
+            return await call(p, gw);
         case 'donate':
             return await donate(p, gw);
         case 'send':
@@ -81,6 +85,15 @@ async function depositAndCall(p: NetworkProvider, gw: OpenedContract<Gateway>) {
     await gw.sendDepositAndCall(p.sender(), toNano(amount), recipient, callData);
 }
 
+async function call(p: NetworkProvider, gw: OpenedContract<Gateway>) {
+    const recipient = await ask(p, 'enter zevm recipient address', '');
+
+    const callDataRaw = await ask(p, 'enter ABI-encoded call data (e.g. 0x0000ABC123...)', '');
+    const callData = types.hexStringToCell(callDataRaw);
+
+    await gw.sendCall(p.sender(), recipient, callData);
+}
+
 async function donate(p: NetworkProvider, gw: OpenedContract<Gateway>) {
     const amount = await ask(p, 'enter amount to donate', '1');
 
@@ -106,20 +119,21 @@ async function withdraw(p: NetworkProvider, gw: OpenedContract<Gateway>) {
             'NEVER USE THIS FOR REAL FUNDS. Proceed?',
     );
 
-    const signer = new ethers.Wallet(await ask(p, 'Enter a private key', ''));
+    const wallet = new ethers.Wallet(await ask(p, 'Enter a private key', ''));
 
     const gwState = await gw.getGatewayState();
-    if (signer.address.toLowerCase() !== gwState.tss.toLowerCase()) {
-        console.log(`Signer (${signer.address}) doesn't match TSS (${gwState.tss})`);
+    if (wallet.address.toLowerCase() !== gwState.tss.toLowerCase()) {
+        console.log(`Signer (${wallet.address}) doesn't match TSS (${gwState.tss})`);
         console.log('Aborting');
         return;
     }
 
-    console.log(`Signer address: ${signer.address}`);
+    console.log(`Signer address: ${wallet.address}`);
 
     const recipient = await p.ui().inputAddress('Enter TON recipient', p.sender().address);
     const amount = await ask(p, 'Enter amount to withdraw', '1');
 
+    const signer = crypto.signerFromEthersWallet(wallet);
     await gw.sendWithdraw(signer, recipient, toNano(amount));
 
     console.log('Sent an external message to the Gateway');
