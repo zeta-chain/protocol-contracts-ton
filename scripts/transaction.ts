@@ -27,6 +27,7 @@ export async function run(p: NetworkProvider) {
     const commands = [
         'deposit',
         'depositAndCall',
+        'call',
         'donate',
         'send',
         'withdraw',
@@ -41,6 +42,8 @@ export async function run(p: NetworkProvider) {
             return await deposit(p, gw);
         case 'depositAndCall':
             return await depositAndCall(p, gw);
+        case 'call':
+            return await call(p, gw);
         case 'donate':
             return await donate(p, gw);
         case 'send':
@@ -80,6 +83,15 @@ async function depositAndCall(p: NetworkProvider, gw: OpenedContract<Gateway>) {
     const callData = types.hexStringToCell(callDataRaw);
 
     await gw.sendDepositAndCall(p.sender(), toNano(amount), recipient, callData);
+}
+
+async function call(p: NetworkProvider, gw: OpenedContract<Gateway>) {
+    const recipient = await ask(p, 'enter zevm recipient address', '');
+
+    const callDataRaw = await ask(p, 'enter ABI-encoded call data (e.g. 0x0000ABC123...)', '');
+    const callData = types.hexStringToCell(callDataRaw);
+
+    await gw.sendCall(p.sender(), recipient, callData);
 }
 
 async function donate(p: NetworkProvider, gw: OpenedContract<Gateway>) {
