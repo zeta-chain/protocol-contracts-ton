@@ -170,6 +170,13 @@ function parseInbound(tx: Transaction) {
             kv.depositFee = formatCoin(dacLog.depositFee);
 
             break;
+        case GatewayOp.Call:
+            kv.operation = 'call';
+            kv.queryId = slice.loadUint(64);
+            kv.zevmRecipient = bufferToHexString(slice.loadBuffer(20));
+            kv.callData = sliceToHexString(slice.loadRef().asSlice());
+
+            break;
         default:
             kv.operation = `unknown (op: ${opCode})`;
     }
@@ -200,13 +207,39 @@ function parseOutbound(tx: Transaction) {
     const payload = slice.loadRef().beginParse();
 
     const opCode = payload.loadUint(32);
-    if (opCode !== GatewayOp.Withdraw) {
-        throw new Error(`Unsupported outbound op code: ${opCode}`);
-    }
 
-    const recipient = payload.loadAddress();
-    const amount = payload.loadCoins();
-    const seqno = payload.loadUint(32);
+    let kv: Record<string, any> = {};
+
+    switch (opCode) {
+        case GatewayOp.Withdraw:
+            const recipient = payload.loadAddress();
+            const amount = payload.loadCoins();
+            const seqno = payload.loadUint(32);
+
+            kv = {
+                operation: 'withdraw',
+                signature: `0x${signature.toString('hex')}`,
+                recipient: recipient.toRawString(),
+                amount: formatCoin(amount),
+                seqno,
+            };
+
+            break;
+        case GatewayOp.IncreaseSeqno:
+            const reasonCode = payload.loadUint(32);
+            const seqno2 = payload.loadUint(32);
+
+            kv = {
+                operation: 'increaseSeqno',
+                signature: `0x${signature.toString('hex')}`,
+                reasonCode,
+                seqno: seqno2,
+            };
+
+            break;
+        default:
+            kv.operation = `unknown (op: ${opCode})`;
+    }
 
     return {
         sender: null, // external messages don't have a sender
@@ -216,13 +249,7 @@ function parseOutbound(tx: Transaction) {
         exitCode: exitCode,
         gas: formatCoin(tx.totalFees.coins),
         link: common.txLink(hash, isTestnet),
-        payload: {
-            operation: 'withdraw',
-            signature: `0x${signature.toString('hex')}`,
-            recipient: recipient.toRawString(),
-            amount: formatCoin(amount),
-            seqno,
-        },
+        payload: kv,
     };
 }
 

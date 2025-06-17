@@ -31,6 +31,7 @@ export async function run(p: NetworkProvider) {
         'donate',
         'send',
         'withdraw',
+        'increaseSeqno',
         'getState',
         'getSeqno',
     ];
@@ -50,6 +51,8 @@ export async function run(p: NetworkProvider) {
             return await send(p, gw);
         case 'withdraw':
             return await withdraw(p, gw);
+        case 'increaseSeqno':
+            return await increaseSeqno(p, gw);
         case 'getState':
             const state = await gw.getGatewayState();
             console.log('Gateway state', {
@@ -113,22 +116,14 @@ async function send(p: NetworkProvider, gw: OpenedContract<Gateway>) {
 
 // Emulates withdrawals from the Gateway made by TSS ECDSA signature
 async function withdraw(p: NetworkProvider, gw: OpenedContract<Gateway>) {
-    await ack(
-        p,
-        'You are about to enter a private key emulating TSS. ' +
-            'NEVER USE THIS FOR REAL FUNDS. Proceed?',
-    );
-
-    const wallet = new ethers.Wallet(await ask(p, 'Enter a private key', ''));
-
+    const wallet = await resolveEVMWallet(p);
     const gwState = await gw.getGatewayState();
+
     if (wallet.address.toLowerCase() !== gwState.tss.toLowerCase()) {
         console.log(`Signer (${wallet.address}) doesn't match TSS (${gwState.tss})`);
         console.log('Aborting');
         return;
     }
-
-    console.log(`Signer address: ${wallet.address}`);
 
     const recipient = await p.ui().inputAddress('Enter TON recipient', p.sender().address);
     const amount = await ask(p, 'Enter amount to withdraw', '1');
@@ -138,6 +133,47 @@ async function withdraw(p: NetworkProvider, gw: OpenedContract<Gateway>) {
 
     console.log('Sent an external message to the Gateway');
     console.log(`Checkout ${gw.address.toRawString()} in the explorer to see the result`);
+}
+
+async function increaseSeqno(p: NetworkProvider, gw: OpenedContract<Gateway>) {
+    const wallet = await resolveEVMWallet(p);
+    const gwState = await gw.getGatewayState();
+
+    if (wallet.address.toLowerCase() !== gwState.tss.toLowerCase()) {
+        console.log(`Signer (${wallet.address}) doesn't match TSS (${gwState.tss})`);
+        console.log('Aborting');
+        return;
+    }
+
+    const reasonCode = Number(await ask(p, 'enter reason code', '0'));
+
+    const signer = crypto.signerFromEthersWallet(wallet);
+    await gw.sendIncreaseSeqno(signer, reasonCode);
+
+    console.log('Sent an external message to the Gateway');
+    console.log(`Checkout ${gw.address.toRawString()} in the explorer to see the result`);
+}
+
+async function resolveEVMWallet(p: NetworkProvider): Promise<ethers.Wallet> {
+    let pk = process.env.EVM_PK as string;
+
+    if (!pk) {
+        const warning =
+            'You are about to enter a private key emulating TSS. ' +
+            'NEVER USE THIS FOR REAL FUNDS. Proceed?';
+
+        await ack(p, warning);
+
+        pk = await ask(p, 'Enter a private key', '');
+    } else {
+        console.log('Loaded EVM private key from env ✔︎');
+    }
+
+    const wallet = new ethers.Wallet(pk);
+
+    console.log(`Signer address: ${wallet.address}`);
+
+    return wallet;
 }
 
 async function ask(p: NetworkProvider, msg: string, defaultValue: string): Promise<string> {
