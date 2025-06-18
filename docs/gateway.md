@@ -4,17 +4,17 @@
 
 ### Constants
 
-- **op::internal::donate** = 100
-- **op::internal::deposit** = 101
-- **op::internal::deposit_and_call** = 102
-- **op::internal::call** = 103
-- **op::external::withdraw** = 200
-- **op::external::increase_seqno** = 205
-- **op::authority::set_deposits_enabled** = 201
-- **op::authority::update_tss** = 202
-- **op::authority::update_code** = 203
-- **op::authority::update_authority** = 204
-- **op::authority::reset_seqno** = 206
+-   **op::internal::donate** = 100
+-   **op::internal::deposit** = 101
+-   **op::internal::deposit_and_call** = 102
+-   **op::internal::call** = 103
+-   **op::external::withdraw** = 200
+-   **op::external::increase_seqno** = 205
+-   **op::authority::set_deposits_enabled** = 201
+-   **op::authority::update_tss** = 202
+-   **op::authority::update_code** = 203
+-   **op::authority::update_authority** = 204
+-   **op::authority::reset_seqno** = 206
 
 ### `handle_deposit`
 
