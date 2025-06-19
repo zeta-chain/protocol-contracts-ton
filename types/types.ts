@@ -52,8 +52,8 @@ export function gatewayConfigToCell(config: GatewayConfig): Cell {
 
     return beginCell()
         .storeUint(config.depositsEnabled ? 1 : 0, 1) // deposits_enabled
-        .storeCoins(0) // total_locked
-        .storeUint(0, 32) // seqno
+        .storeCoins(config.totalLocked) // total_locked
+        .storeUint(config.seqno, 32) // seqno
         .storeSlice(tss) // tss_address
         .storeAddress(config.authority) // authority_address
         .endCell();
