@@ -79,31 +79,6 @@ function reportMsgFees(msg: Message): MsgFeeReport {
     return { type, coins: 0n, forwardFee: 0n, importFee: 0n };
 }
 
-// returns a string with a decimal point
-export function formatCoin(coins: bigint): string {
-    const divisor = 1_000_000_000n;
-    const tons = coins / divisor;
-    const fractional = coins % divisor;
-
-    if (fractional === 0n) {
-        return String(tons);
-    }
-
-    // Ensure the fractional part is always 9 digits by padding with leading zeros if necessary
-    let fractionalStr = fractional.toString().padStart(9, '0');
-    fractionalStr = trimSuffix(fractionalStr, '0');
-
-    return `${tons.toString()}.${fractionalStr}`;
-}
-
-function trimSuffix(str: string, suffix: string): string {
-    while (str.endsWith(suffix)) {
-        str = str.slice(0, -suffix.length);
-    }
-
-    return str;
-}
-
 /**
  * Compiles the given FunC code and returns the resulting cell
  * @see https://github.com/ton-community/func-js

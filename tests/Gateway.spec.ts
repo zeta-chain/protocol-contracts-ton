@@ -54,6 +54,8 @@ describe('Gateway', () => {
             depositsEnabled: true,
             tss: tssWallet.address,
             authority: deployer.address,
+            totalLocked: 0n,
+            seqno: 0,
         };
 
         gateway = blockchain.openContract(gw.Gateway.createFromConfig(deployConfig, code));
