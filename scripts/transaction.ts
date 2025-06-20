@@ -1,11 +1,11 @@
 import { NetworkProvider } from '@ton/blueprint';
 import { OpenedContract, SendMode, toNano } from '@ton/core';
 import { ethers } from 'ethers';
-import { formatCoin } from '../tests/utils';
 import { Gateway } from '../wrappers/Gateway';
 import * as types from '../types';
 import * as crypto from '../crypto/ecdsa';
 import * as common from './common';
+import { formatCoin } from '../types';
 
 async function open(p: NetworkProvider): Promise<OpenedContract<Gateway>> {
     const gwAddress = await common.inputGateway(p);

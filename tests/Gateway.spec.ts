@@ -3,7 +3,7 @@ import { beginCell, Cell, toNano, Transaction } from '@ton/core';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
 import * as utils from './utils';
-import { formatCoin } from './utils';
+import { formatCoin } from '../types';
 import { findTransaction, FlatTransactionComparable } from '@ton/test-utils/dist/test/transaction';
 import { ethers } from 'ethers';
 import { readString, stringToCell } from '@ton/core/dist/boc/utils/strings';
@@ -54,6 +54,8 @@ describe('Gateway', () => {
             depositsEnabled: true,
             tss: tssWallet.address,
             authority: deployer.address,
+            totalLocked: 0n,
+            seqno: 0,
         };
 
         gateway = blockchain.openContract(gw.Gateway.createFromConfig(deployConfig, code));
@@ -104,20 +106,20 @@ describe('Gateway', () => {
             return {
                 Test: name,
 
-                'GW Balance Before': utils.formatCoin(balanceBefore),
-                'InMsg Coins': utils.formatCoin(report.inMessage.coins),
-                'OutMsgs Coins': utils.formatCoin(outMsgsCoins),
-                'GW Balance after': utils.formatCoin(balanceAfter),
+                'GW Balance Before': formatCoin(balanceBefore),
+                'InMsg Coins': formatCoin(report.inMessage.coins),
+                'OutMsgs Coins': formatCoin(outMsgsCoins),
+                'GW Balance after': formatCoin(balanceAfter),
 
-                'Total Fees': utils.formatCoin(report.totalFees),
-                'Storage Fees': utils.formatCoin(report.storageFees),
-                'Compute Fees': utils.formatCoin(report.computeFees),
+                'Total Fees': formatCoin(report.totalFees),
+                'Storage Fees': formatCoin(report.storageFees),
+                'Compute Fees': formatCoin(report.computeFees),
                 'Gas Used': Number(report.gasUsed),
-                'Action Fees': utils.formatCoin(report.actionFees),
-                'Fwd Fees': utils.formatCoin(report.fwdFees),
-                'InMsg Import Fee': utils.formatCoin(report.inMessage.importFee),
-                'InMsg Fwd Fee': utils.formatCoin(report.inMessage.forwardFee),
-                'OutMsgs fees': utils.formatCoin(outMsgsFees),
+                'Action Fees': formatCoin(report.actionFees),
+                'Fwd Fees': formatCoin(report.fwdFees),
+                'InMsg Import Fee': formatCoin(report.inMessage.importFee),
+                'InMsg Fwd Fee': formatCoin(report.inMessage.forwardFee),
+                'OutMsgs fees': formatCoin(outMsgsFees),
             };
         });
 
