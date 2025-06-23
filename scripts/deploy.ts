@@ -1,7 +1,8 @@
 import { OpenedContract, toNano } from '@ton/core';
 import { Gateway } from '../wrappers/Gateway';
 import { compile, NetworkProvider } from '@ton/blueprint';
-import { GatewayConfig } from '../types';
+import { formatCoin, GatewayConfig } from '../types';
+import * as common from './common';
 
 async function open(provider: NetworkProvider): Promise<OpenedContract<Gateway>> {
     const tss = await provider.ui().input('Enter TSS address');
@@ -16,11 +17,24 @@ async function open(provider: NetworkProvider): Promise<OpenedContract<Gateway>>
         throw new Error('Aborted');
     }
 
+    const seqno = await common.inputNumber(provider, 'seqno', 0, 0);
+    const totalLocked = await common.inputNumber(provider, 'total_locked (in nano ton)', 0);
+
     const config: GatewayConfig = {
         depositsEnabled: true,
         tss,
         authority,
+        totalLocked: BigInt(totalLocked),
+        seqno,
     };
+
+    console.log('GatewayConfig', {
+        depositsEnabled: config.depositsEnabled,
+        tss,
+        authority: authority.toRawString(),
+        totalLocked: formatCoin(config.totalLocked),
+        seqno,
+    });
 
     const code = await compile('Gateway');
 

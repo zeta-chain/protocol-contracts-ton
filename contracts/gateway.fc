@@ -447,6 +447,10 @@ int seqno() method_id {
 
 ;; returns tx fee for the specified operation
 int calculate_gas_fee(int op) method_id {
+    if (op == op::internal::donate) {
+        return 0;
+    }
+
     if (op == op::internal::deposit) {
         return get_gas_fee_workchain(gas::deposit);
     }

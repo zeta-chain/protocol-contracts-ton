@@ -1,8 +1,8 @@
 import { NetworkProvider } from '@ton/blueprint';
 import { Gateway } from '../wrappers/Gateway';
-import { formatCoin } from '../tests/utils';
 import { Address } from '@ton/core';
 import * as common from './common';
+import { formatCoin } from '../types';
 
 export async function run(provider: NetworkProvider) {
     const isTestnet = provider.network() === 'testnet';

@@ -32,18 +32,28 @@ export enum GatewayError {
 
 export type GatewayConfig = {
     depositsEnabled: boolean;
+    totalLocked: bigint;
+    seqno: number;
     tss: string;
     authority: Address;
 };
 
 // Initial state of the contract during deployment
 export function gatewayConfigToCell(config: GatewayConfig): Cell {
+    if (config.seqno < 0) {
+        throw new Error('Seqno must be non-negative');
+    }
+
+    if (config.totalLocked < 0) {
+        throw new Error('Total locked must be non-negative');
+    }
+
     const tss = evmAddressToSlice(config.tss);
 
     return beginCell()
         .storeUint(config.depositsEnabled ? 1 : 0, 1) // deposits_enabled
-        .storeCoins(0) // total_locked
-        .storeUint(0, 32) // seqno
+        .storeCoins(config.totalLocked) // total_locked
+        .storeUint(config.seqno, 32) // seqno
         .storeSlice(tss) // tss_address
         .storeAddress(config.authority) // authority_address
         .endCell();

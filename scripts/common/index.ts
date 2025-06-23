@@ -3,7 +3,7 @@ import { Address } from '@ton/core';
 
 // https://testnet.tonviewer.com/kQB6TUFJZyaq2yJ89NMTyVkS8f5sx0LBjr3jBv9ZiB2IFoFu
 export const GATEWAY_ACCOUNT_ID_TESTNET = Address.parse(
-    '0:7a4d41496726aadb227cf4d313c95912f1fe6cc742c18ebde306ff59881d8816',
+    '0:87115e4a012e747d9bce013ce2244010c6d5e3b0f88ddbc63420519b8619e5a0',
 );
 
 export async function inputGateway(provider: NetworkProvider): Promise<Address> {
@@ -19,7 +19,6 @@ export async function inputNumber(
     prompt: string,
     defaultValue: number,
     min = 1,
-    max = 100,
 ): Promise<number> {
     const input = await provider.ui().input(`${prompt} (default is ${defaultValue})`);
     if (input === '') {
@@ -28,12 +27,25 @@ export async function inputNumber(
 
     const number = parseInt(input);
 
-    if (isNaN(number) || number < min || number > max) {
+    if (isNaN(number) || number < min) {
         console.log(`Invalid number, using default value ${defaultValue}`);
         return defaultValue;
     }
 
     return number;
+}
+
+export async function inputString(
+    provider: NetworkProvider,
+    prompt: string,
+    fallback: string = '',
+): Promise<string> {
+    const input = await provider.ui().input(`${prompt} (default: ${fallback})`);
+    if (input === '') {
+        return fallback;
+    }
+
+    return input;
 }
 
 export function parseTxHash(txHash: string): { lt: string; hash: string } {
