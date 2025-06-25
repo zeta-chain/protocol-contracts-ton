@@ -1,5 +1,6 @@
 import { NetworkProvider } from '@ton/blueprint';
 import { Address } from '@ton/core';
+import chalk from 'chalk';
 
 // https://testnet.tonviewer.com/kQB6TUFJZyaq2yJ89NMTyVkS8f5sx0LBjr3jBv9ZiB2IFoFu
 export const GATEWAY_ACCOUNT_ID_TESTNET = Address.parse(
@@ -8,10 +9,9 @@ export const GATEWAY_ACCOUNT_ID_TESTNET = Address.parse(
 
 export async function inputGateway(provider: NetworkProvider): Promise<Address> {
     const isTestnet = provider.network() === 'testnet';
+    const fallback = isTestnet ? GATEWAY_ACCOUNT_ID_TESTNET : undefined;
 
-    return await provider
-        .ui()
-        .inputAddress('Enter Gateway address', isTestnet ? GATEWAY_ACCOUNT_ID_TESTNET : undefined);
+    return await provider.ui().inputAddress('Enter Gateway address', fallback);
 }
 
 export async function inputNumber(
@@ -48,6 +48,23 @@ export async function inputString(
     return input;
 }
 
+export function clog(message: any, color: string = 'white') {
+    const chalkColor = (chalk as any)[color] || chalk.white;
+    console.log(chalkColor(message));
+}
+
+export function clogInfo(message: any) {
+    return clog(message, 'yellow');
+}
+
+export function clogSuccess(message: any) {
+    return clog(message, 'green');
+}
+
+export function clogError(message: any) {
+    return clog(message, 'red');
+}
+
 export function parseTxHash(txHash: string): { lt: string; hash: string } {
     const chunks = txHash.split(':');
     if (chunks.length !== 2) {
@@ -63,12 +80,13 @@ export function parseTxHash(txHash: string): { lt: string; hash: string } {
 }
 
 export function addressLink(address: Address, isTestnet: boolean): string {
-    const raw = address.toRawString();
-    return isTestnet
-        ? `https://testnet.tonscan.org/address/${raw}`
-        : `https://tonscan.org/address/${raw}`;
+    const base = isTestnet ? 'testnet.tonviewer.com' : 'tonviewer.com';
+
+    return `https://${base}/${address.toRawString()}`;
 }
 
 export function txLink(hash: string, isTestnet: boolean): string {
-    return isTestnet ? `https://testnet.tonscan.org/tx/${hash}` : `https://tonscan.org/tx/${hash}`;
+    const base = isTestnet ? 'testnet.tonviewer.com' : 'tonviewer.com';
+
+    return `https://${base}/transaction/${hash}`;
 }
