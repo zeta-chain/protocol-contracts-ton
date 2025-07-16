@@ -136,3 +136,29 @@ function trimSuffix(str: string, suffix: string): string {
 
     return str;
 }
+
+/**
+ * Converts a BOC string to a Cell
+ * @param raw - BOC string (base64 or hex)
+ * @param encoding - Encoding of the BOC string
+ * @returns Cell
+ */
+export function cellFromEncoded(raw: string, encoding: 'base64' | 'hex' = 'base64'): Cell {
+    const buf = Buffer.from(raw, encoding);
+
+    try {
+        return cellFromBuffer(buf);
+    } catch (e) {
+        throw new Error(`Unable to parse BOC "${raw}" from ${encoding}: ${e}`);
+    }
+}
+
+export function cellFromBuffer(raw: Buffer): Cell {
+    const cells = Cell.fromBoc(raw);
+
+    if (cells.length !== 1) {
+        throw new Error(`Expected 1 cell, got ${cells.length}`);
+    }
+
+    return cells[0];
+}

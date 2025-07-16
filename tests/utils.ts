@@ -2,6 +2,7 @@ import { beginCell, Cell, Message, Slice, Transaction } from '@ton/core';
 import { Wallet } from 'ethers';
 import { compileFunc } from '@ton-community/func-js';
 import { TransactionDescriptionGeneric } from '@ton/core/src/types/TransactionDescription';
+import { cellFromEncoded } from '../types';
 
 export interface TxFeeReport {
     txType: string;
@@ -97,8 +98,5 @@ export async function compileFuncInline(code: string): Promise<Cell> {
     // Bag of Cells
     const boc = result.codeBoc as string;
 
-    const cells = Cell.fromBoc(Buffer.from(boc, 'base64'));
-    expect(cells.length).toBe(1);
-
-    return cells[0];
+    return cellFromEncoded(boc);
 }
