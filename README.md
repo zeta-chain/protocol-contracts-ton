@@ -1,82 +1,92 @@
-# ZetaChain TON Protocol Contracts
+# Zetachain Protocol Contracts for TON
 
-Contracts of official protocol contracts deployed by the core ZetaChain team to facilitate cross-chain
-operations using TON (The Open Network) and other chains.
-
-[Contracts Documentation](./docs/gateway.md)
-
-## ⚠️ Important Notice
-
-This repository is under active development and is not yet ready for production use.
+This repo contains **Gateway** implementation that brings cross-chain capabilities to The Open Network by leveraging Zetachain's Universal Apps. 
 
 ## Learn more about ZetaChain
 
-* Check our [website](https://www.zetachain.com/).
-* Read our [docs](https://docs.zetachain.com/).
+* Check our [website](https://www.zetachain.com/)
+* Read our [docs](https://docs.zetachain.com/)
+
+## Supported user operations
+
+| Op      | Name               | Description                                                        |
+|---------|--------------------|--------------------------------------------------------------------|
+| 100     | `donate`           | Donate TON to the Gateway :)                                       |
+| 101     | `deposit`          | Deposit TON to a recipient on Zeta EVM                             |
+| 102     | `deposit_and_call` | Deposits TON to Zeta EVM and call a contract with `call_data`      |
+| 103     | `call`             | Trigger `onCall` on Zeta EVM contract with specified `call_data`   |
+
+
+Withdraw operations are initiated by invoking `Gateway.withdraw(...)` in Zetachain. 
+Check out our docs for further reference!
+
+[Contracts Documentation](./docs/gateway.md) (codegen)
 
 ## Project structure
 
 The project is built using [Blueprint](https://github.com/ton-org/blueprint).
 
-- `contracts` - source code of all the smart contracts of the project and their dependencies.
-- `wrappers` - wrapper classes (implementing `Contract` from ton-core) for the contracts, including any [de]
-  serialization primitives and compilation functions.
+- `contracts` - FunC contracts source code
+- `types` - TS types & (de)serialization utils
+- `wrappers` - TS wrappers for ease of interacting with gateway
 - `tests` - tests for the contracts.
-- `scripts` - scripts used by the project, mainly the deployment scripts.
+- `scripts` - Blueprint scripts with various tasks
 
 ## How to use
 
-- Compile FunC contracts: `make compile` — compiles all smart contracts written in FunC.
-- Run tests: `make test` — executes the unit tests for the contracts.
-- Deploy contract: `make deploy`
-- Send different transactions to the contract — `make tx`
+- `make compile` compiles all smart contracts;
+- `make test` executes the unit tests for the contracts;
+- `make deploy` deploys the Gateway;
+- `make tx` sends various messages to the contract;
+
+## Localnet
+
+This project is integrated with Zeta's [localnet](https://github.com/zeta-chain/localnet). It essentially allows developers to write cross-chain apps between EVM, SOL, TON, and more with full end-to-end testing **locally**
+
+You can send transactions directly to localnet's Gateway by calling `make tx-localnet`. Note that most TON wallets don't support custom networks, so the mnemonic is used for dev purposes *only*
+
+```sh
+export WALLET_VERSION="V5R1" # or other version
+export WALLET_MNEMONIC="front local amused plastic ..."
+
+make tx-localnet
+```
+
+Tip: to generate a wallet on localnet use the following command (in localnet's repo)
+
+```sh
+yarn localnet ton wallet
+```
 
 ## How it works
 
-### Deposits
-
-All deposits are represented as internal messages that have the following structure:
+All inbound operations (deposit, call, ...) are represented as internal messages that have the following structure:
 
 - uint32 `op_code` - operation code. Standard for TON
 - uint64 `query_id` - not used right now. Standard for TON
 - ... the rest of the message is the operation-specific data
 
-#### `deposit` (op 101)
+Use `types` package for encoding/decoding data to BoC.
+
+Example `deposit` message schema:
 
 ```
-op_code:uint32 query_id:uint64 evm_recipient:slice (160 bits)
+op_code:uint32 query_id:uint64 evm_recipient:slice (160 bits / 20 bytes)
 ```
 
-Deposits funds to the contract (subtracting a small deposit fee to cover the gas costs).
-ZetaChain will observe this tx and execute cross-chain deposit to `evm_recipient` on Zeta.
+### Gas usage
 
-#### `deposit_and_call` (op 102)
+Due to nature of TON, we use gas "ceiling" approach where we assume that each op has a const "max cost" that we subtract from the caller. you can call the `int calculate_gas_fee(int op) method_id` getter to receive a fee in nanoTON. 
 
-```
-op_code:uint32 query_id:uint64 evm_recipient:slice (160 bits) call_data:cell
-```
+Example: to send 1 TON to Zeta recipient `0x873F092B7598D1B2BEa4F21C7f3b86b9e8f6e7e4`, you actually need to send 1 TON + calculate_gas_fee(101), where 101 is the op code for the deposit operation.
 
-Deposits funds to the contract (subtracting a small deposit fee to cover the gas costs).
-ZetaChain will observe this tx and execute cross-chain deposit to `evm_recipient` on Zeta
-AND call the contract with `call_data`.
-
-Note that `call_data` should be
-encoded as [snakeCell](https://docs.ton.org/develop/dapps/asset-processing/metadata#snake-data-encoding)
-
-#### Authority operations
-
-These "admin" operations are used to manage the contract. In the future, they will be fully managed by TSS.
-Currently, a dedicated authority address is used `state::authority_address`
-
-- `set_deposits_enabled` - toggle deposits
-- `update_tss` - update TSS public key
-- `update_code` - upgrade the contract code
-- `update_authority` - update the authority TON address
-- ...
 
 ### Withdrawals
 
+> All withdrawals are triggered by Zeta EVM, developers don't need to worry about these technical nuances.
+
 ZetaChain uses MPC (Multi Party Computation) to sign all outbound transactions using TSS (Threshold Signature Scheme).
+
 Due to the technical implementation TSS uses ECDSA cryptography in opposite to EdDSA in TON.
 Thus, the contract must verify ECDSA signatures directly on-chain.
 
@@ -96,31 +106,9 @@ The payload for `op withdrawal (200)` is the following:
 op:uint32 recipient:MsgAddr amount:Coins seqno:uint32
 ```
 
-#### External message signature flow:
+External message signature flow:
 
 1. Calculate the hash of the payload cell: `payload_hash` = `sha256(payload_data)`
 2. Recover ECDSA public key from the signature. Derive sender's EVM address from the public key.
 3. Check that the message comes from TSS address.
 4. Route the payload to the corresponding operation code.
-
-
-## Localnet
-
-This project is integrated with Zeta's [localnet](https://github.com/zeta-chain/localnet). 
-You can send transactions directly to Gateway by calling `make tx-localnet`. 
-Note that most wallets don't support custom networks, so the mnemonic is used.
-
-```sh
-export WALLET_VERSION="V5R1" # or other version
-export WALLET_MNEMONIC="front local amused plastic ..."
-
-make tx-localnet
-
-# ...
-```
-
-Tip: to generate a wallet on localnet use the following command (in localnet's repo)
-
-```sh
-yarn localnet ton wallet
-```
