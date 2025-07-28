@@ -1,5 +1,5 @@
 import { NetworkProvider } from '@ton/blueprint';
-import { OpenedContract, SendMode, toNano } from '@ton/core';
+import { OpenedContract, Sender, SendMode, toNano } from '@ton/core';
 import { ethers } from 'ethers';
 import { Gateway } from '../wrappers/Gateway';
 import * as types from '../types';
@@ -34,6 +34,7 @@ export async function run(p: NetworkProvider) {
         'increaseSeqno',
         'getState',
         'getSeqno',
+        'authority',
     ];
 
     const cmd = await p.ui().choose('Select command', commands, (cmd) => cmd);
@@ -65,11 +66,25 @@ export async function run(p: NetworkProvider) {
         case 'getSeqno':
             console.log('Gateway seqno:', await gw.getSeqno());
             return;
+        case 'authority':
+            let sender = p.sender();
+
+            const useEchoSender = await p
+                .ui()
+                .prompt('Would you like to use manual sending (e.g. for a multisig)?');
+
+            if (useEchoSender) {
+                sender = new common.EchoSender(false);
+            }
+
+            return await authorityCommand(p, sender, gw);
         default:
             console.log(`Unknown command ${cmd}`);
             return;
     }
 }
+
+// Gateway commands ===========================================
 
 async function deposit(p: NetworkProvider, gw: OpenedContract<Gateway>) {
     const recipient = await ask(p, 'enter zevm recipient address', '');
@@ -153,6 +168,54 @@ async function increaseSeqno(p: NetworkProvider, gw: OpenedContract<Gateway>) {
     console.log('Sent an external message to the Gateway');
     console.log(`Checkout ${gw.address.toRawString()} in the explorer to see the result`);
 }
+
+// Authority commands ===========================================
+
+async function authorityCommand(p: NetworkProvider, sender: Sender, gw: OpenedContract<Gateway>) {
+    const commands = ['toggleDeposits', 'updateTSS', 'resetSeqno', 'updateAuthority'];
+
+    const cmd = await p.ui().choose('Select authority command', commands, (cmd) => cmd);
+
+    switch (cmd) {
+        case 'toggleDeposits':
+            return await toggleDeposits(p, sender, gw);
+        case 'updateTSS':
+            return await updateTSS(p, sender, gw);
+        case 'resetSeqno':
+            return await resetSeqno(p, sender, gw);
+        case 'updateAuthority':
+            return await updateAuthority(p, sender, gw);
+        default:
+            console.log(`Unknown authority command ${cmd}`);
+            return;
+    }
+}
+
+async function toggleDeposits(p: NetworkProvider, sender: Sender, gw: OpenedContract<Gateway>) {
+    const enabled = await p.ui().prompt('Enable deposits?');
+
+    await gw.sendEnableDeposits(sender, enabled);
+}
+
+async function updateTSS(p: NetworkProvider, sender: Sender, gw: OpenedContract<Gateway>) {
+    const tss = await common.inputString(p, 'Enter new TSS address', '');
+
+    await gw.sendUpdateTSS(sender, tss);
+}
+
+async function resetSeqno(p: NetworkProvider, sender: Sender, gw: OpenedContract<Gateway>) {
+    const seqno = await common.inputNumber(p, 'Enter new seqno', 0);
+
+    await gw.sendResetSeqno(sender, seqno);
+}
+
+async function updateAuthority(p: NetworkProvider, sender: Sender, gw: OpenedContract<Gateway>) {
+    const authority = await p.ui().inputAddress('Enter new authority address');
+
+    await gw.sendUpdateAuthority(sender, authority);
+}
+
+// Helper commands ===========================================
 
 async function resolveEVMWallet(p: NetworkProvider): Promise<ethers.Wallet> {
     let pk = process.env.EVM_PK as string;
