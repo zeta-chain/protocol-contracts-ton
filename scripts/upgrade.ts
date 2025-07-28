@@ -13,6 +13,7 @@ import {
     addressLink,
     clogError,
     clogSuccess,
+    EchoSender,
 } from './common';
 import { flattenTransaction } from '@ton/test-utils';
 
@@ -33,7 +34,17 @@ async function open(p: NetworkProvider, gwAddress: Address): Promise<OpenedContr
  */
 export async function run(p: NetworkProvider) {
     const isTestnet = p.network() === 'testnet';
-    const sender = p.sender();
+
+    let sender = p.sender();
+
+    // replace ton wallet with mock sender that simply echoes tx data
+    // for further manual tx sending
+    const prepareTx = process.env.PREPARE_TX === 'true';
+    if (prepareTx) {
+        clogInfo('Prepare: using EchoSender');
+        sender = new EchoSender(isTestnet, true);
+    }
+
     const gw = await open(p, await inputGateway(p));
 
     // 1. Load new code (it should contain .hex key with the code)
@@ -63,18 +74,20 @@ export async function run(p: NetworkProvider) {
     await dryRunUpgrade(p, gw, codeCell);
 
     // 4. Check authority
-    if (!gwState.authority.equals(sender.address!)) {
+    if (!prepareTx && !gwState.authority.equals(sender.address!)) {
         clogError('You are not the authority of the Gateway!');
         clogError(`Your address: ${sender.address!.toRawString()}`);
         clogError(`Gateway authority: ${gwState.authority.toRawString()}`);
         process.exit(1);
     }
 
-    // 5. Perform a real upgrade
-    const ok = await p.ui().prompt('Are you sure you want to upgrade the Gateway?');
-    if (!ok) {
-        console.log('Aborted');
-        process.exit(0);
+    // 5. Perform a real upgrade (skipped in prepare mode)
+    if (!prepareTx) {
+        const ok = await p.ui().prompt('Are you sure you want to upgrade the Gateway?');
+        if (!ok) {
+            console.log('Aborted');
+            process.exit(0);
+        }
     }
 
     await gw.sendUpdateCode(sender, codeCell);
@@ -141,7 +154,9 @@ async function dryRunUpgrade(
                     type: 'active',
                     state: {
                         code: currentCode,
-                        data: modifyState(currentData, authority.address),
+                        data: mockState(currentData, {
+                            newAuthority: authority.address,
+                        }),
                     },
                 },
             },
@@ -224,7 +239,7 @@ function statePartiallyEquals(a: GatewayState, b: GatewayState): boolean {
  * @param newAuthority - new authority address (admin wallet)
  * @returns Cell
  */
-function modifyState(original: Cell, newAuthority: Address): Cell {
+function mockState(original: Cell, state: { newAuthority: Address }): Cell {
     /*
         ;; state.fc
         () load_state() impure inline {
@@ -248,7 +263,7 @@ function modifyState(original: Cell, newAuthority: Address): Cell {
     modified.storeCoins(cs.loadCoins());
     modified.storeUint(cs.loadUint(32), 32);
     modified.storeBuffer(cs.loadBuffer(20));
-    modified.storeAddress(newAuthority);
+    modified.storeAddress(state.newAuthority);
 
     return modified.asCell();
 }

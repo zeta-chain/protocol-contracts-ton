@@ -25,6 +25,12 @@ tx: ## Execute a transaction to the Gateway
 prepare-tx: ## Prepare a transaction to the Gateway
 	@PREPARE_TX=true npx blueprint run transaction
 
+upgrade: ## Upgrade the Gateway
+	@npx blueprint run upgrade
+
+prepare-upgrade: ## Prepare a Gateway upgrade
+	@PREPARE_TX=true npx blueprint run upgrade
+
 tx-localnet: ## Execute a transaction to the Gateway on localnet
 	@echo "Using mnemonic from env: WALLET_MNEMONIC && WALLET_VERSION"
 	@echo "Wallet version '$(WALLET_VERSION)'. Mnemonic: '$(shell echo $(WALLET_MNEMONIC) | cut -c 1-20)...'"
@@ -42,4 +48,6 @@ lint: ## Lint the code
 fmt: ## Format the code
 	npm run prettier-fix
 
-.PHONY: help compile test deploy tx prepare-tx tx-localnet debug debug-tx fmt
+.PHONY: help compile test fmt lint
+.PHONY: debug debug-tx
+.PHONY: tx prepare-tx tx-localnet upgrade prepare-upgrade

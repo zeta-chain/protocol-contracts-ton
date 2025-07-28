@@ -17,7 +17,7 @@ This repo contains **Gateway** implementation that brings cross-chain capabiliti
 | 103     | `call`             | Trigger `onCall` on Zeta EVM contract with specified `call_data`   |
 
 
-Withdraw operations are initiated by invoking `Gateway.withdraw(...)` in Zetachain. 
+Withdraw operations are initiated by invoking `Gateway.withdraw(...)` in Zetachain.
 Check out our docs for further reference!
 
 [Contracts Documentation](./docs/gateway.md) (codegen)
