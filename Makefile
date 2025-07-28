@@ -17,7 +17,10 @@ debug-tx: ## Execute a transaction to the Gateway
 	@npx blueprint run debugTransaction
 
 tx: ## Execute a transaction to the Gateway
-	npx blueprint run transaction
+	@npx blueprint run transaction
+
+prepare-tx: ## Prepare a transaction to the Gateway
+	@PREPARE_TX=true npx blueprint run transaction
 
 tx-localnet: ## Execute a transaction to the Gateway on localnet
 	@echo "Using mnemonic from env: WALLET_MNEMONIC && WALLET_VERSION"
@@ -36,4 +39,4 @@ lint: ## Lint the code
 fmt: ## Format the code
 	npm run prettier-fix
 
-.PHONY: help compile test deploy tx tx-localnet debug debug-tx fmt
+.PHONY: help compile test deploy tx prepare-tx tx-localnet debug debug-tx fmt

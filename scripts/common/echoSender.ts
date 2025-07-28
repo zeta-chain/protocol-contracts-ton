@@ -1,5 +1,5 @@
 import { Sender, SenderArguments } from '@ton/core';
-import { clogInfo } from '.';
+import { clogInfo, clogSuccess } from '.';
 import { formatCoin } from '../../types';
 
 /**
@@ -7,9 +7,12 @@ import { formatCoin } from '../../types';
  * Can be used for manual raw transaction sending.
  */
 export class EchoSender implements Sender {
-    constructor(public readonly exitAfterSend: boolean = false) {}
+    constructor(
+        public readonly isTestnet: boolean,
+        public readonly exitAfterSend: boolean = false,
+    ) {}
 
-    async send(args: SenderArguments): Promise<void> {
+    public async send(args: SenderArguments): Promise<void> {
         clogInfo('[EchoSender] Use this data to send a transaction manually');
 
         let bodyBocBase64: string | null = null;
@@ -17,16 +20,27 @@ export class EchoSender implements Sender {
             bodyBocBase64 = args.body.toBoc().toString('base64');
         }
 
-        console.log('Transaction details', {
-            recipient: args.to.toRawString(),
-            value: `${formatCoin(args.value)} TON`,
-            valueRaw: args.value.toString(),
+        const tx = {
+            recipient: {
+                raw: args.to.toRawString(),
+                formatted: args.to.toString({
+                    bounceable: false,
+                    testOnly: this.isTestnet,
+                }),
+            },
+            amount: {
+                raw: args.value.toString(),
+                formatted: `${formatCoin(args.value)} TON`,
+            },
             bodyBocBase64,
-        });
+        };
 
-        clogInfo('[EchoSender] No actual tx sent');
+        console.log('[EchoSender] Transaction details:', tx);
+
+        const message = `[EchoSender] No actual tx sent${this.exitAfterSend ? '. Exit 0' : ''}`;
+        clogSuccess(message);
+
         if (this.exitAfterSend) {
-            clogInfo('Exited');
             process.exit(0);
         }
     }
