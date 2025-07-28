@@ -38,6 +38,7 @@ The project is built using [Blueprint](https://github.com/ton-org/blueprint).
 - `make test` executes the unit tests for the contracts;
 - `make deploy` deploys the Gateway;
 - `make tx` sends various messages to the contract;
+- `make help` shows all available cli commands including upgrade & authority operations
 
 ## Localnet
 
