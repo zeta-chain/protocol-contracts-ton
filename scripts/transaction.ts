@@ -63,18 +63,6 @@ export async function run(p: NetworkProvider) {
             return await withdraw(p, gw);
         case 'increaseSeqno':
             return await increaseSeqno(p, gw);
-        case 'getState':
-            const state = await gw.getGatewayState();
-            console.log('Gateway state', {
-                depositsEnabled: state.depositsEnabled,
-                valueLocked: formatCoin(state.valueLocked),
-                tss: state.tss,
-                authority: state.authority.toRawString(),
-            });
-            return;
-        case 'getSeqno':
-            console.log('Gateway seqno:', await gw.getSeqno());
-            return;
         case 'authority':
             return await authorityCommand(p, sender, gw);
         default:
