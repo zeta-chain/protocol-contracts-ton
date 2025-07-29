@@ -163,15 +163,15 @@ async function increaseSeqno(p: NetworkProvider, gw: OpenedContract<Gateway>) {
 
 async function authorityCommand(p: NetworkProvider, sender: Sender, gw: OpenedContract<Gateway>) {
     const cmd = await selectCommand(p, [
-        'toggleDeposits',
+        'enableDeposits',
         'updateTSS',
         'resetSeqno',
         'updateAuthority',
     ]);
 
     switch (cmd) {
-        case 'toggleDeposits':
-            return await toggleDeposits(p, sender, gw);
+        case 'enableDeposits':
+            return await enableDeposits(p, sender, gw);
         case 'updateTSS':
             return await updateTSS(p, sender, gw);
         case 'resetSeqno':
@@ -184,8 +184,8 @@ async function authorityCommand(p: NetworkProvider, sender: Sender, gw: OpenedCo
     }
 }
 
-async function toggleDeposits(p: NetworkProvider, sender: Sender, gw: OpenedContract<Gateway>) {
-    const enabled = await p.ui().prompt('Enable deposits?');
+async function enableDeposits(p: NetworkProvider, sender: Sender, gw: OpenedContract<Gateway>) {
+    const enabled = await p.ui().prompt('Set deposits enabled? Otherwise, will be disabled');
 
     await gw.sendEnableDeposits(sender, enabled);
 }
