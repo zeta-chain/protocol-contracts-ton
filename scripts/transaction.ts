@@ -1,5 +1,5 @@
 import { NetworkProvider } from '@ton/blueprint';
-import { OpenedContract, SendMode, toNano } from '@ton/core';
+import { OpenedContract, Sender, SendMode, toNano } from '@ton/core';
 import { ethers } from 'ethers';
 import { Gateway } from '../wrappers/Gateway';
 import * as types from '../types';
@@ -21,10 +21,21 @@ async function open(p: NetworkProvider): Promise<OpenedContract<Gateway>> {
 
 // Execute a Gateway command
 export async function run(p: NetworkProvider) {
+    const isTestnet = p.network() === 'testnet';
+
+    let sender = p.sender();
+
+    // replace ton wallet with mock sender that simply echoes tx data
+    // for further manual tx sending
+    const prepareTx = process.env.PREPARE_TX === 'true';
+    if (prepareTx) {
+        common.clogInfo('Prepare: using EchoSender');
+        sender = new common.EchoSender(isTestnet, true);
+    }
+
     const gw = await open(p);
 
-    // can be extended in the future
-    const commands = [
+    const cmd = await selectCommand(p, [
         'deposit',
         'depositAndCall',
         'call',
@@ -34,85 +45,79 @@ export async function run(p: NetworkProvider) {
         'increaseSeqno',
         'getState',
         'getSeqno',
-    ];
-
-    const cmd = await p.ui().choose('Select command', commands, (cmd) => cmd);
+        'authority',
+    ]);
 
     switch (cmd) {
         case 'deposit':
-            return await deposit(p, gw);
+            return await deposit(p, sender, gw);
         case 'depositAndCall':
-            return await depositAndCall(p, gw);
+            return await depositAndCall(p, sender, gw);
         case 'call':
-            return await call(p, gw);
+            return await call(p, sender, gw);
         case 'donate':
-            return await donate(p, gw);
+            return await donate(p, sender, gw);
         case 'send':
-            return await send(p, gw);
+            return await send(p, sender, gw);
         case 'withdraw':
             return await withdraw(p, gw);
         case 'increaseSeqno':
             return await increaseSeqno(p, gw);
-        case 'getState':
-            const state = await gw.getGatewayState();
-            console.log('Gateway state', {
-                depositsEnabled: state.depositsEnabled,
-                valueLocked: formatCoin(state.valueLocked),
-                tss: state.tss,
-                authority: state.authority.toRawString(),
-            });
-            return;
-        case 'getSeqno':
-            console.log('Gateway seqno:', await gw.getSeqno());
-            return;
+        case 'authority':
+            return await authorityCommand(p, sender, gw);
         default:
             console.log(`Unknown command ${cmd}`);
             return;
     }
 }
 
-async function deposit(p: NetworkProvider, gw: OpenedContract<Gateway>) {
+// Gateway commands ===========================================
+
+async function deposit(p: NetworkProvider, sender: Sender, gw: OpenedContract<Gateway>) {
     const recipient = await ask(p, 'enter zevm recipient address', '');
     const amount = await ask(p, 'enter amount to deposit', '1');
 
-    await gw.sendDeposit(p.sender(), toNano(amount), recipient);
+    await gw.sendDeposit(sender, toNano(amount), recipient);
 }
 
-async function depositAndCall(p: NetworkProvider, gw: OpenedContract<Gateway>) {
+async function depositAndCall(p: NetworkProvider, sender: Sender, gw: OpenedContract<Gateway>) {
     const recipient = await ask(p, 'enter zevm recipient address', '');
     const amount = await ask(p, 'enter amount to deposit', '1');
 
     const callDataRaw = await ask(p, 'enter ABI-encoded call data (e.g. 0x0000ABC123...)', '');
     const callData = types.hexStringToCell(callDataRaw);
 
-    await gw.sendDepositAndCall(p.sender(), toNano(amount), recipient, callData);
+    await gw.sendDepositAndCall(sender, toNano(amount), recipient, callData);
 }
 
-async function call(p: NetworkProvider, gw: OpenedContract<Gateway>) {
+async function call(p: NetworkProvider, sender: Sender, gw: OpenedContract<Gateway>) {
     const recipient = await ask(p, 'enter zevm recipient address', '');
 
     const callDataRaw = await ask(p, 'enter ABI-encoded call data (e.g. 0x0000ABC123...)', '');
     const callData = types.hexStringToCell(callDataRaw);
 
-    await gw.sendCall(p.sender(), recipient, callData);
+    await gw.sendCall(sender, recipient, callData);
 }
 
-async function donate(p: NetworkProvider, gw: OpenedContract<Gateway>) {
+async function donate(p: NetworkProvider, sender: Sender, gw: OpenedContract<Gateway>) {
     const amount = await ask(p, 'enter amount to donate', '1');
 
-    await gw.sendDonation(p.sender(), toNano(amount));
+    await gw.sendDonation(sender, toNano(amount));
 }
 
 // note the Gateway will bounce a tx w/o known op code
-async function send(p: NetworkProvider, gw: OpenedContract<Gateway>) {
+async function send(p: NetworkProvider, sender: Sender, gw: OpenedContract<Gateway>) {
     const amount = await ask(p, 'enter amount to send', '1');
 
-    await p.sender().send({
+    await sender.send({
         sendMode: SendMode.PAY_GAS_SEPARATELY,
         to: gw.address,
         value: toNano(amount),
     });
 }
+
+// TSS commands ===========================================
+// (use only in localnet)
 
 // Emulates withdrawals from the Gateway made by TSS ECDSA signature
 async function withdraw(p: NetworkProvider, gw: OpenedContract<Gateway>) {
@@ -145,13 +150,68 @@ async function increaseSeqno(p: NetworkProvider, gw: OpenedContract<Gateway>) {
         return;
     }
 
-    const reasonCode = Number(await ask(p, 'enter reason code', '0'));
+    const reasonCode = await common.inputNumber(p, 'enter reason code', 0);
 
     const signer = crypto.signerFromEthersWallet(wallet);
     await gw.sendIncreaseSeqno(signer, reasonCode);
 
     console.log('Sent an external message to the Gateway');
     console.log(`Checkout ${gw.address.toRawString()} in the explorer to see the result`);
+}
+
+// Authority commands ===========================================
+
+async function authorityCommand(p: NetworkProvider, sender: Sender, gw: OpenedContract<Gateway>) {
+    const cmd = await selectCommand(p, [
+        'enableDeposits',
+        'updateTSS',
+        'resetSeqno',
+        'updateAuthority',
+    ]);
+
+    switch (cmd) {
+        case 'enableDeposits':
+            return await enableDeposits(p, sender, gw);
+        case 'updateTSS':
+            return await updateTSS(p, sender, gw);
+        case 'resetSeqno':
+            return await resetSeqno(p, sender, gw);
+        case 'updateAuthority':
+            return await updateAuthority(p, sender, gw);
+        default:
+            console.log(`Unknown authority command ${cmd}`);
+            return;
+    }
+}
+
+async function enableDeposits(p: NetworkProvider, sender: Sender, gw: OpenedContract<Gateway>) {
+    const enabled = await p.ui().prompt('Set deposits enabled? Otherwise, will be disabled');
+
+    await gw.sendEnableDeposits(sender, enabled);
+}
+
+async function updateTSS(p: NetworkProvider, sender: Sender, gw: OpenedContract<Gateway>) {
+    const tss = await common.inputString(p, 'Enter new TSS address', '');
+
+    await gw.sendUpdateTSS(sender, tss);
+}
+
+async function resetSeqno(p: NetworkProvider, sender: Sender, gw: OpenedContract<Gateway>) {
+    const seqno = await common.inputNumber(p, 'Enter new seqno', 0);
+
+    await gw.sendResetSeqno(sender, seqno);
+}
+
+async function updateAuthority(p: NetworkProvider, sender: Sender, gw: OpenedContract<Gateway>) {
+    const authority = await p.ui().inputAddress('Enter new authority address');
+
+    await gw.sendUpdateAuthority(sender, authority);
+}
+
+// Helper commands ===========================================
+
+async function selectCommand(p: NetworkProvider, commands: string[]): Promise<string> {
+    return await p.ui().choose('Select command', commands, (cmd) => cmd);
 }
 
 async function resolveEVMWallet(p: NetworkProvider): Promise<ethers.Wallet> {

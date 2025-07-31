@@ -17,7 +17,7 @@ This repo contains **Gateway** implementation that brings cross-chain capabiliti
 | 103     | `call`             | Trigger `onCall` on Zeta EVM contract with specified `call_data`   |
 
 
-Withdraw operations are initiated by invoking `Gateway.withdraw(...)` in Zetachain. 
+Withdraw operations are initiated by invoking `Gateway.withdraw(...)` in Zetachain.
 Check out our docs for further reference!
 
 [Contracts Documentation](./docs/gateway.md) (codegen)
@@ -38,6 +38,7 @@ The project is built using [Blueprint](https://github.com/ton-org/blueprint).
 - `make test` executes the unit tests for the contracts;
 - `make deploy` deploys the Gateway;
 - `make tx` sends various messages to the contract;
+- `make help` shows all available cli commands including upgrade & authority operations
 
 ## Localnet
 

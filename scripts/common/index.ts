@@ -2,14 +2,21 @@ import { NetworkProvider } from '@ton/blueprint';
 import { Address } from '@ton/core';
 import chalk from 'chalk';
 
+export * from './echoSender';
+
 // https://testnet.tonviewer.com/kQB6TUFJZyaq2yJ89NMTyVkS8f5sx0LBjr3jBv9ZiB2IFoFu
 export const GATEWAY_ACCOUNT_ID_TESTNET = Address.parse(
     '0:87115e4a012e747d9bce013ce2244010c6d5e3b0f88ddbc63420519b8619e5a0',
 );
 
+// https://tonviewer.com/EQAh9rsgxE5_te_m24ek_q0MKJzBO9lIgEGcq_GWiGR5h5q_
+export const GATEWAY_ACCOUNT_ID_MAINNET = Address.parse(
+    '0:21f6bb20c44e7fb5efe6db87a4fead0c289cc13bd94880419cabf19688647987',
+);
+
 export async function inputGateway(provider: NetworkProvider): Promise<Address> {
     const isTestnet = provider.network() === 'testnet';
-    const fallback = isTestnet ? GATEWAY_ACCOUNT_ID_TESTNET : undefined;
+    const fallback = isTestnet ? GATEWAY_ACCOUNT_ID_TESTNET : GATEWAY_ACCOUNT_ID_MAINNET;
 
     return await provider.ui().inputAddress('Enter Gateway address', fallback);
 }

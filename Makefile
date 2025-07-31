@@ -2,7 +2,10 @@
 WALLET_VERSION ?= V5R1
 
 help: ## List of commands
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
+	@echo "Available commands:\n"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
+		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+	@echo "\nUsage: make <command>"
 
 compile: ## Compile contract
 	npx blueprint build
@@ -17,7 +20,16 @@ debug-tx: ## Execute a transaction to the Gateway
 	@npx blueprint run debugTransaction
 
 tx: ## Execute a transaction to the Gateway
-	npx blueprint run transaction
+	@npx blueprint run transaction
+
+prepare-tx: ## Prepare a transaction to the Gateway
+	@PREPARE_TX=true npx blueprint run transaction
+
+upgrade: ## Upgrade the Gateway
+	@npx blueprint run upgrade
+
+prepare-upgrade: ## Prepare a Gateway upgrade
+	@PREPARE_TX=true npx blueprint run upgrade
 
 tx-localnet: ## Execute a transaction to the Gateway on localnet
 	@echo "Using mnemonic from env: WALLET_MNEMONIC && WALLET_VERSION"
@@ -36,4 +48,6 @@ lint: ## Lint the code
 fmt: ## Format the code
 	npm run prettier-fix
 
-.PHONY: help compile test deploy tx tx-localnet debug debug-tx fmt
+.PHONY: help compile test fmt lint
+.PHONY: debug debug-tx
+.PHONY: tx prepare-tx tx-localnet upgrade prepare-upgrade
